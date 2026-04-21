@@ -1,7 +1,7 @@
 package lynx.team2.service;
 
 import lynx.team2.domain.Transaction;
-import lynx.team2.repository.TransactionRepository;
+import lynx.team2.repository.Abstract.TransactionRepository;
 import lynx.team2.validator.TransactionValidator;
 
 import java.time.LocalDateTime;
