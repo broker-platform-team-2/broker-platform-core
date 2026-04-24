@@ -1,1 +1,6 @@
 rootProject.name = 'core'
+include 'common'
+include 'UserService'
+include 'AccountService'
+include 'TransactionService'
+include 'HoldingsService'
