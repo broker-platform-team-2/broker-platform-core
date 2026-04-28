@@ -8,8 +8,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @SpringBootApplication
 @EntityScan("lynx.team2.models")
 @EnableJpaRepositories("lynx.team2.repository")
-public class UserServiceApplication {
+public class HoldingsServiceApplication {
     public static void main(String[] args) {
-        SpringApplication.run(UserServiceApplication.class, args);
+        SpringApplication.run(HoldingsServiceApplication.class, args);
     }
 }
