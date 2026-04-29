@@ -31,11 +31,11 @@ public class HoldingsService {
         return repo.save(holding);
     }
 
-    public List<Holding> findAllForUserId(Long id){
-        return repo.findAllByUser_Id(id);
+    public List<Holding> findAllForUserId(Long userId){
+        return repo.findAllByUser_UserId(userId);
     }
 
-    public List<Holding> findAllForUserIdAndInstrumentId(Long userId,Long instrumentId){
-        return repo.findAllByUser_IdAndInstrumentId(userId,instrumentId);
+    public List<Holding> findAllForUserIdAndInstrumentId(Long userId, String instrumentId){
+        return repo.findAllByUser_UserIdAndInstrumentId(userId, instrumentId);
     }
 }

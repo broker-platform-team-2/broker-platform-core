@@ -4,9 +4,9 @@ services:
     container_name: broker_platform_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: lynxteam2
-      POSTGRES_PASSWORD: lynxteam2
-      POSTGRES_DB: brokerplatformdb
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-brokerplatformdb}
     ports:
       - "5433:5432"
     volumes:
