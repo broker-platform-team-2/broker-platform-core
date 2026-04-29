@@ -1,5 +1,7 @@
 package lynx.team2.service;
 
+import lombok.extern.slf4j.Slf4j;
+import lynx.team2.client.AccountServiceClient;
 import org.springframework.transaction.annotation.Transactional;
 import lynx.team2.models.User;
 import lynx.team2.repository.UserRepository;
@@ -9,15 +11,22 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @Transactional
 public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountServiceClient accountServiceClient;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            AccountServiceClient accountServiceClient
+    ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.accountServiceClient = accountServiceClient;
     }
 
     public User signUp(String email, String username, String rawPassword) {
@@ -39,7 +48,16 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
         savedUser.setPlatformUserId(savedUser.getUserId());
-        return userRepository.save(savedUser);
+        User finalUser = userRepository.save(savedUser);
+
+        try {
+            accountServiceClient.createAccount(finalUser.getUserId(), "USD");
+        } catch (RuntimeException e) {
+            log.error("Failed to create account for user {}; signup will continue but account must be created manually",
+                    finalUser.getUserId(), e);
+        }
+
+        return finalUser;
     }
 
     @Transactional(readOnly = true)
