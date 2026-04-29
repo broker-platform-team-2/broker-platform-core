@@ -9,6 +9,16 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
+/**
+ * UserService sits behind the user-gateway / bot-gateway, which validate the
+ * JWT and forward identity via X-User-Id / X-Username headers. Internal
+ * services therefore do NOT re-authenticate; they simply trust the gateway.
+ *
+ * For this to be safe, internal service ports (8082-8085) must NOT be exposed
+ * publicly. In dev they bind to localhost; in any deployed environment they
+ * must live on a private network with only the gateways reachable from
+ * outside.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -17,16 +27,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(
-                    "/users/register",
-                    "/users/login",
-                    "/users/verify-email",
-                    "/users/forgot-password",
-                    "/users/reset-password"
-                ).permitAll()
-                .anyRequest().authenticated()
-            )
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
         return http.build();

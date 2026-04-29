@@ -32,9 +32,6 @@ public class Holding{
     @Column(name="amount",nullable = false)
     private BigDecimal amount;
 
-    @Column(name="buying_price",nullable = false)
-    private BigDecimal buyingPrice;
-
     @Column(name="currency",nullable = false, length = 3)
     private String currency;
 

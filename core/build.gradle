@@ -40,6 +40,10 @@ subprojects {
         testAnnotationProcessor 'org.projectlombok:lombok'
 
         implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+        // Loads .env from the project root at startup so ${VAR} placeholders
+        // in application.properties resolve without manual env-var setup.
+        implementation 'me.paulschwarz:spring-dotenv:4.0.0'
     }
 
     test {
@@ -84,6 +88,8 @@ dependencies {
     implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 }
 
 test {

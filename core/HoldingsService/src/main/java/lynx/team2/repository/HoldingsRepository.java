@@ -5,11 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface HoldingsRepository extends JpaRepository<Holding,Long> {
+public interface HoldingsRepository extends JpaRepository<Holding, Long> {
 
-    public Holding updateHolding(Holding holding);
+    List<Holding> findAllByUser_UserId(Long userId);
 
-    public List<Holding> findAllByUser_Id(Long id);
-
-    public List<Holding> findAllByUser_IdAndInstrumentId(Long id, Long instrumentId);
+    List<Holding> findAllByUser_UserIdAndInstrumentId(Long userId, String instrumentId);
 }
