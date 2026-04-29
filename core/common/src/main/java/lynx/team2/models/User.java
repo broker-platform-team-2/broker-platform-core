@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.IdGeneratorType;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "users")
 @Data
@@ -30,5 +32,16 @@ public class User{
 
     @Column(name = "platform_user_id")
     private Long platformUserId;
+
+    @Column(nullable = false)
+    private boolean emailVerified = false;
+
+    private String emailVerificationToken;
+
+    private LocalDateTime emailVerificationTokenExpiresAt;
+
+    private String passwordResetToken;
+
+    private LocalDateTime passwordResetTokenExpiresAt;
 
 }
