@@ -5,7 +5,7 @@ import lynx.team2.exceptions.ValidatorException;
 import lynx.team2.models.Account;
 import lynx.team2.models.User;
 import lynx.team2.repository.AccountRepository;
-//import lynx.team2.repository.UserRepository;
+import lynx.team2.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,12 +17,12 @@ import java.math.BigDecimal;
 public class AccountServiceImpl implements AccountService {
 
     private final AccountRepository accountRepository;
-    //private final UserRepository userRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
     public Account createAccount(Long userId, String currency) {
-        /*User user = userRepository.findById(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RepoException("User not found"));
 
         Account account = new Account();
@@ -31,8 +31,7 @@ public class AccountServiceImpl implements AccountService {
         account.setFrozenBalance(BigDecimal.ZERO);
         account.setCurrency(currency != null ? currency : "USD");
 
-        return accountRepository.save(account);*/
-        return null;
+        return accountRepository.save(account);
     }
 
     @Override
