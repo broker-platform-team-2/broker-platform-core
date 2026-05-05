@@ -5,19 +5,19 @@ spring:
     gateway:
       routes:
         - id: user-service
-          uri: http://localhost:8082
+          uri: ${USER_SERVICE_URL:http://localhost:8082}
           predicates:
             - Path=/users/**,/bots/**
         - id: account-service
-          uri: http://localhost:8083
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/accounts/**,/funds/**
         - id: transaction-service
-          uri: http://localhost:8084
+          uri: ${TRANSACTION_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/transactions/**,/orders/**
         - id: holdings-service
-          uri: http://localhost:8085
+          uri: ${HOLDINGS_SERVICE_URL:http://localhost:8085}
           predicates:
             - Path=/holdings/**,/portfolio/**
 

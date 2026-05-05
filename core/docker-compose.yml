@@ -11,6 +11,194 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME:-brokerplatformdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: user_service
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  account-service:
+    build:
+      context: .
+      dockerfile: account-service/Dockerfile
+    container_name: account_service
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  transaction-service:
+    build:
+      context: .
+      dockerfile: transaction-service/Dockerfile
+    container_name: transaction_service
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  holdings-service:
+    build:
+      context: .
+      dockerfile: holdings-service/Dockerfile
+    container_name: holdings_service
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  trade-service:
+    build:
+      context: .
+      dockerfile: trade-service/Dockerfile
+    container_name: trade_service
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SERVICES_ACCOUNT_URL: http://account-service:8083
+      SERVICES_TRANSACTION_URL: http://transaction-service:8084
+      SERVICES_HOLDINGS_URL: http://holdings-service:8085
+      EXCHANGE_BASE_URL: ${EXCHANGE_BASE_URL:-http://localhost:9000/api/v1}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY:-dev-key}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET:-dev-secret}
+    depends_on:
+      db:
+        condition: service_healthy
+      account-service:
+        condition: service_started
+      transaction-service:
+        condition: service_started
+      holdings-service:
+        condition: service_started
+
+  exchange-client-service:
+    build:
+      context: .
+      dockerfile: exchange-client-service/Dockerfile
+    container_name: exchange_client_service
+    restart: unless-stopped
+    ports:
+      - "8087:8087"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SERVICES_ACCOUNT_URL: http://account-service:8083
+      SERVICES_TRANSACTION_URL: http://transaction-service:8084
+      SERVICES_HOLDINGS_URL: http://holdings-service:8085
+      SERVICES_NOTIFICATION_URL: http://notification-service:8088
+      EXCHANGE_WS_URL: ${EXCHANGE_WS_URL:-ws://localhost:9000/ws}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY:-dev-key}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET:-dev-secret}
+    depends_on:
+      db:
+        condition: service_healthy
+      account-service:
+        condition: service_started
+      transaction-service:
+        condition: service_started
+      holdings-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: notification_service
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  user-gateway:
+    build:
+      context: .
+      dockerfile: user-gateway/Dockerfile
+    container_name: user_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8082
+      ACCOUNT_SERVICE_URL: http://account-service:8083
+      TRANSACTION_SERVICE_URL: http://transaction-service:8084
+      HOLDINGS_SERVICE_URL: http://holdings-service:8085
+    depends_on:
+      - user-service
+      - account-service
+      - transaction-service
+      - holdings-service
+
+  bot-gateway:
+    build:
+      context: .
+      dockerfile: bot-gateway/Dockerfile
+    container_name: bot_gateway
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://user-service:8082
+      ACCOUNT_SERVICE_URL: http://account-service:8083
+      TRANSACTION_SERVICE_URL: http://transaction-service:8084
+      HOLDINGS_SERVICE_URL: http://holdings-service:8085
+    depends_on:
+      - user-service
+      - account-service
+      - transaction-service
+      - holdings-service
 
 volumes:
   pgdata:
