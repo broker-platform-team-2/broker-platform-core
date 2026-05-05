@@ -26,6 +26,13 @@ public class TradeService {
     private final TransactionServiceClient transactionServiceClient;
     private final ExchangeClient exchangeClient;
 
+    /**
+     * Currency that platform-side trades are settled in. Stocks on Wakibi Exchange are
+     * quoted in EUR (see UI mockups), so this is the account we freeze / deduct against.
+     * If we ever support cross-currency instruments this needs to come from the order.
+     */
+    private static final String TRADE_CURRENCY = "EUR";
+
     public OrderResponse placeOrder(Long userId, PlaceOrderRequest request) {
         validate(request);
 
@@ -33,7 +40,7 @@ public class TradeService {
         boolean shouldFreeze = request.side() == TransactionType.BUY && estimatedCost != null;
 
         if (shouldFreeze) {
-            accountServiceClient.freezeFunds(userId, estimatedCost);
+            accountServiceClient.freezeFunds(userId, TRADE_CURRENCY, estimatedCost);
         }
 
         ExchangeClient.ExchangeOrder exchangeOrder;
@@ -53,7 +60,7 @@ public class TradeService {
                 TransactionStatus.PENDING,
                 BigDecimal.ZERO,
                 resolvePrice(request, exchangeOrder),
-                "USD",
+                TRADE_CURRENCY,
                 request.quantity()
         ));
 
@@ -139,7 +146,7 @@ public class TradeService {
 
     private void safeUnfreeze(Long userId, BigDecimal amount) {
         try {
-            accountServiceClient.unfreezeFunds(userId, amount);
+            accountServiceClient.unfreezeFunds(userId, TRADE_CURRENCY, amount);
         } catch (RuntimeException e) {
             log.error("Failed to unfreeze funds for user {} amount {}; manual reconciliation required",
                     userId, amount, e);

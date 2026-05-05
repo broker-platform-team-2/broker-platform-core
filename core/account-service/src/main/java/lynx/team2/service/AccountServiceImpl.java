@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -25,41 +26,65 @@ public class AccountServiceImpl implements AccountService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RepoException("User not found"));
 
-        Account account = new Account();
-        account.setUser(user);
-        account.setBalance(BigDecimal.ZERO);
-        account.setFrozenBalance(BigDecimal.ZERO);
-        account.setCurrency(currency != null ? currency : "USD");
+        String normalized = currency != null ? currency.toUpperCase() : "EUR";
 
-        return accountRepository.save(account);
+        // Idempotent — if the user already has an account in this currency, return it.
+        return accountRepository.findByUserUserIdAndCurrency(userId, normalized)
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setUser(user);
+                    account.setBalance(BigDecimal.ZERO);
+                    account.setFrozenBalance(BigDecimal.ZERO);
+                    account.setCurrency(normalized);
+                    return accountRepository.save(account);
+                });
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Account getAccountByUserId(Long userId) {
-        return accountRepository.findByUserUserId(userId)
-                .orElseThrow(() -> new RepoException("Account not found for user ID: " + userId));
+    public List<Account> getAccountsByUserId(Long userId) {
+        return accountRepository.findAllByUserUserIdOrderByAccountIdAsc(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Account getAccountByUserIdAndCurrency(Long userId, String currency) {
+        return accountRepository.findByUserUserIdAndCurrency(userId, currency.toUpperCase())
+                .orElseThrow(() -> new RepoException(
+                        "Account not found for user " + userId + " in " + currency));
     }
 
     @Override
     @Transactional
-    public Account depositFunds(Long userId, BigDecimal amount) {
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+    public Account depositFunds(Long userId, String currency, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidatorException("Deposit amount must be positive");
         }
 
-        Account account = accountRepository.findByUserIdWithLock(userId)
-                .orElseThrow(() -> new RepoException("Account not found"));
-
+        Account account = lockAccount(userId, currency);
         account.setBalance(account.getBalance().add(amount));
         return accountRepository.save(account);
     }
 
     @Override
     @Transactional
-    public void freezeFunds(Long userId, BigDecimal amount) {
-        Account account = accountRepository.findByUserIdWithLock(userId)
-                .orElseThrow(() -> new RepoException("Account not found"));
+    public Account deductFunds(Long userId, String currency, BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidatorException("Deduct amount must be positive");
+        }
+
+        Account account = lockAccount(userId, currency);
+        if(account.getBalance().subtract(amount).compareTo(BigDecimal.ZERO) <= 0){
+            throw new ValidatorException("Insufficient funds");
+        }
+        account.setBalance(account.getBalance().subtract(amount));
+        return accountRepository.save(account);
+    }
+
+    @Override
+    @Transactional
+    public void freezeFunds(Long userId, String currency, BigDecimal amount) {
+        Account account = lockAccount(userId, currency);
 
         if (account.getBalance().compareTo(amount) < 0) {
             throw new ValidatorException("Insufficient funds to block for order");
@@ -72,9 +97,8 @@ public class AccountServiceImpl implements AccountService {
 
     @Override
     @Transactional
-    public void unfreezeFunds(Long userId, BigDecimal amount) {
-        Account account = accountRepository.findByUserIdWithLock(userId)
-                .orElseThrow(() -> new RepoException("Account not found"));
+    public void unfreezeFunds(Long userId, String currency, BigDecimal amount) {
+        Account account = lockAccount(userId, currency);
 
         BigDecimal amountToUnfreeze = amount.min(account.getFrozenBalance());
 
@@ -85,9 +109,8 @@ public class AccountServiceImpl implements AccountService {
 
     @Override
     @Transactional
-    public void deductFrozenFunds(Long userId, BigDecimal totalCostWithFees) {
-        Account account = accountRepository.findByUserIdWithLock(userId)
-                .orElseThrow(() -> new RepoException("Account not found"));
+    public void deductFrozenFunds(Long userId, String currency, BigDecimal totalCostWithFees) {
+        Account account = lockAccount(userId, currency);
 
         if (account.getFrozenBalance().compareTo(totalCostWithFees) < 0) {
             BigDecimal deficit = totalCostWithFees.subtract(account.getFrozenBalance());
@@ -100,22 +123,9 @@ public class AccountServiceImpl implements AccountService {
         accountRepository.save(account);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public BigDecimal getAvailableBalance(Long userId) {
-        return getAccountByUserId(userId).getBalance();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public String getAccountCurrency(Long userId) {
-        return getAccountByUserId(userId).getCurrency();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public BigDecimal getTotalEquity(Long userId) {
-        Account acc = getAccountByUserId(userId);
-        return acc.getBalance().add(acc.getFrozenBalance());
+    private Account lockAccount(Long userId, String currency) {
+        return accountRepository.findByUserIdAndCurrencyWithLock(userId, currency.toUpperCase())
+                .orElseThrow(() -> new RepoException(
+                        "Account not found for user " + userId + " in " + currency));
     }
 }

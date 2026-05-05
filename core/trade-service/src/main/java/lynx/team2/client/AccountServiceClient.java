@@ -16,26 +16,26 @@ public class AccountServiceClient {
         this.client = client;
     }
 
-    public void freezeFunds(Long userId, BigDecimal amount) {
+    public void freezeFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
                 .uri("/funds/freeze")
-                .body(new FundsOperationRequest(userId, amount))
+                .body(new FundsOperationRequest(userId, currency, amount))
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public void unfreezeFunds(Long userId, BigDecimal amount) {
+    public void unfreezeFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
                 .uri("/funds/unfreeze")
-                .body(new FundsOperationRequest(userId, amount))
+                .body(new FundsOperationRequest(userId, currency, amount))
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public void deductFrozenFunds(Long userId, BigDecimal amount) {
+    public void deductFrozenFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
                 .uri("/funds/deduct")
-                .body(new FundsOperationRequest(userId, amount))
+                .body(new FundsOperationRequest(userId, currency, amount))
                 .retrieve()
                 .toBodilessEntity();
     }

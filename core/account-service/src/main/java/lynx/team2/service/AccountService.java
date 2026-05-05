@@ -3,19 +3,25 @@ package lynx.team2.service;
 import lynx.team2.models.Account;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface AccountService {
     Account createAccount(Long userId, String currency);
-    Account getAccountByUserId(Long userId);
-    Account depositFunds(Long userId, BigDecimal amount);
 
-    // Logica de Trading
-    void freezeFunds(Long userId, BigDecimal amount);
-    void unfreezeFunds(Long userId, BigDecimal amount);
-    void deductFrozenFunds(Long userId, BigDecimal totalCostWithFees);
+    /** All accounts for a user, oldest first (primary). */
+    List<Account> getAccountsByUserId(Long userId);
 
-    // Helpers pentru UI/HomePageController
-    BigDecimal getAvailableBalance(Long userId);
-    String getAccountCurrency(Long userId);
-    BigDecimal getTotalEquity(Long userId);
+    /** Look up the user's account in the given currency. */
+    Account getAccountByUserIdAndCurrency(Long userId, String currency);
+
+    /** Add cash to the user's account in the given currency. */
+    Account depositFunds(Long userId, String currency, BigDecimal amount);
+
+    // --- Trading flows (currency-scoped) ---
+    void freezeFunds(Long userId, String currency, BigDecimal amount);
+    void unfreezeFunds(Long userId, String currency, BigDecimal amount);
+    void deductFrozenFunds(Long userId, String currency, BigDecimal totalCostWithFees);
+
+    /** Withdraw cash from user's account in the given currency. */
+    Account deductFunds(Long userId, String currency, BigDecimal amount);
 }

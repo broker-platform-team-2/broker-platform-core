@@ -50,15 +50,22 @@ public class UserService {
         savedUser.setPlatformUserId(savedUser.getUserId());
         User finalUser = userRepository.save(savedUser);
 
-        try {
-            accountServiceClient.createAccount(finalUser.getUserId(), "USD");
-        } catch (RuntimeException e) {
-            log.error("Failed to create account for user {}; signup will continue but account must be created manually",
-                    finalUser.getUserId(), e);
+        // Bootstrap the user's wallets. Wakibi Trade is multi-currency by default
+        // (see landing page promise: "EUR and RON accounts side-by-side"), so create
+        // both at signup. Failures don't block account creation — just log loudly.
+        for (String currency : DEFAULT_CURRENCIES) {
+            try {
+                accountServiceClient.createAccount(finalUser.getUserId(), currency);
+            } catch (RuntimeException e) {
+                log.error("Failed to create {} account for user {}; create it manually before they trade",
+                        currency, finalUser.getUserId(), e);
+            }
         }
 
         return finalUser;
     }
+
+    private static final java.util.List<String> DEFAULT_CURRENCIES = java.util.List.of("EUR", "RON");
 
     @Transactional(readOnly = true)
     public User login(String email, String rawPassword) {
