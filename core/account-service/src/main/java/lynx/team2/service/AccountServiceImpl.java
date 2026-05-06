@@ -139,6 +139,13 @@ public class AccountServiceImpl implements AccountService {
         accountRepository.save(account);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AccountFundsOperation> getFundOperations(Long userId, String currency) {
+        Account account = getAccountByUserIdAndCurrency(userId, currency);
+        return fundsOperationRepository.findAllByAccountAccountIdOrderByDateDesc(account.getAccountId());
+    }
+
     private Account lockAccount(Long userId, String currency) {
         return accountRepository.findByUserIdAndCurrencyWithLock(userId, currency.toUpperCase())
                 .orElseThrow(() -> new RepoException(

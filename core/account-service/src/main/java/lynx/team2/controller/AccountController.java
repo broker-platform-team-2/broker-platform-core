@@ -4,6 +4,7 @@ import lynx.team2.dto.AccountResponse;
 import lynx.team2.dto.CreateAccountRequest;
 import lynx.team2.dto.DepositRequest;
 import lynx.team2.dto.FundsOperationRequest;
+import lynx.team2.dto.FundsOperationResponse;
 import lynx.team2.models.Account;
 import lynx.team2.service.AccountService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,23 @@ public class AccountController {
     public List<AccountResponse> getMyAccounts(@RequestHeader("X-User-Id") Long userId) {
         return accountService.getAccountsByUserId(userId).stream()
                 .map(this::toResponse)
+                .toList();
+    }
+
+    /** Deposit/withdraw history for the caller's account in a given currency, newest first. */
+    @GetMapping("/funds/history")
+    public List<FundsOperationResponse> getFundHistory(
+            @RequestHeader("X-User-Id") Long userId,
+            @RequestParam String currency
+    ) {
+        return accountService.getFundOperations(userId, currency).stream()
+                .map(op -> new FundsOperationResponse(
+                        op.getOperationId(),
+                        op.getOperationType(),
+                        op.getAmount(),
+                        op.getAccount().getCurrency(),
+                        op.getDate()
+                ))
                 .toList();
     }
 
