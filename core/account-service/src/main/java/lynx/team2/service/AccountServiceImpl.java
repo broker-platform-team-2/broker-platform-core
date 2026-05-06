@@ -3,7 +3,10 @@ package lynx.team2.service;
 import lynx.team2.exceptions.RepoException;
 import lynx.team2.exceptions.ValidatorException;
 import lynx.team2.models.Account;
+import lynx.team2.models.AccountFundsOperation;
+import lynx.team2.models.FundsOperationType;
 import lynx.team2.models.User;
+import lynx.team2.repository.AccountFundsOperationRepository;
 import lynx.team2.repository.AccountRepository;
 import lynx.team2.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,7 @@ public class AccountServiceImpl implements AccountService {
 
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    private final AccountFundsOperationRepository fundsOperationRepository;
 
     @Override
     @Transactional
@@ -63,7 +67,13 @@ public class AccountServiceImpl implements AccountService {
 
         Account account = lockAccount(userId, currency);
         account.setBalance(account.getBalance().add(amount));
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+        fundsOperationRepository.save(AccountFundsOperation.builder()
+                .account(saved)
+                .operationType(FundsOperationType.DEPOSIT)
+                .amount(amount)
+                .build());
+        return saved;
     }
 
     @Override
@@ -78,7 +88,13 @@ public class AccountServiceImpl implements AccountService {
             throw new ValidatorException("Insufficient funds");
         }
         account.setBalance(account.getBalance().subtract(amount));
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+        fundsOperationRepository.save(AccountFundsOperation.builder()
+                .account(saved)
+                .operationType(FundsOperationType.WITHDRAW)
+                .amount(amount)
+                .build());
+        return saved;
     }
 
     @Override
