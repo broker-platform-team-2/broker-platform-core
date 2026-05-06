@@ -1,6 +1,7 @@
 package lynx.team2.service;
 
 import lynx.team2.models.Account;
+import lynx.team2.models.AccountFundsOperation;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,4 +25,7 @@ public interface AccountService {
 
     /** Withdraw cash from user's account in the given currency. */
     Account deductFunds(Long userId, String currency, BigDecimal amount);
+
+    /** All deposit/withdraw operations for the user's account in the given currency, newest first. */
+    List<AccountFundsOperation> getFundOperations(Long userId, String currency);
 }
