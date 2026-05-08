@@ -12,7 +12,7 @@ public class AccountServiceClient {
 
     private final RestClient client;
 
-    public AccountServiceClient(@Qualifier("accountServiceClient") RestClient client) {
+    public AccountServiceClient(@Qualifier("accountRestClient") RestClient client) {
         this.client = client;
     }
 

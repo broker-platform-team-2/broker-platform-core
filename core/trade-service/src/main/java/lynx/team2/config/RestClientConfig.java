@@ -8,12 +8,12 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class RestClientConfig {
 
-    @Bean("accountServiceClient")
+    @Bean("accountRestClient")
     public RestClient accountServiceClient(@Value("${services.account.url}") String baseUrl) {
         return RestClient.builder().baseUrl(baseUrl).build();
     }
 
-    @Bean("transactionServiceClient")
+    @Bean("transactionRestClient")
     public RestClient transactionServiceClient(@Value("${services.transaction.url}") String baseUrl) {
         return RestClient.builder().baseUrl(baseUrl).build();
     }

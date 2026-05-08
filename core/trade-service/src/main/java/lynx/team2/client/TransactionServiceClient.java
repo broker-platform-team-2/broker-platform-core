@@ -11,7 +11,7 @@ public class TransactionServiceClient {
 
     private final RestClient client;
 
-    public TransactionServiceClient(@Qualifier("transactionServiceClient") RestClient client) {
+    public TransactionServiceClient(@Qualifier("transactionRestClient") RestClient client) {
         this.client = client;
     }
 

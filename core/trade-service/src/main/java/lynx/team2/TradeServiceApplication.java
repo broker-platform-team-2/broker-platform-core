@@ -6,8 +6,6 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 @SpringBootApplication
-@EntityScan("lynx.team2.models")
-@EnableJpaRepositories("lynx.team2.repository")
 public class TradeServiceApplication {
     public static void main(String[] args) {
         SpringApplication.run(TradeServiceApplication.class, args);
