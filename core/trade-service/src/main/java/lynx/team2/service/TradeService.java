@@ -13,7 +13,9 @@ import lynx.team2.exceptions.ValidatorException;
 import lynx.team2.models.OrderType;
 import lynx.team2.models.TransactionStatus;
 import lynx.team2.models.TransactionType;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 
@@ -78,11 +80,19 @@ public class TradeService {
         );
     }
 
-    public ExchangeClient.ExchangeOrder getOrder(String orderId) {
-        return exchangeClient.getOrder(orderId);
+    public ExchangeClient.ExchangeOrder getOrder(Long userId, String orderId) {
+        ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
+        if (!String.valueOf(userId).equals(order.platformUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
+        return order;
     }
 
-    public void cancelOrder(String orderId) {
+    public void cancelOrder(Long userId, String orderId) {
+        ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
+        if (!String.valueOf(userId).equals(order.platformUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
         exchangeClient.cancelOrder(orderId);
     }
 

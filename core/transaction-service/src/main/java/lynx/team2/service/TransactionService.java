@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +22,10 @@ public class TransactionService {
     public Transaction createTransaction(Transaction transaction) {
         validator.validate(transaction);
         return repo.save(transaction);
+    }
+
+    public Optional<Transaction> findById(Long id) {
+        return repo.findById(id);
     }
 
     public void deleteTransaction(Long id){

@@ -25,13 +25,17 @@ public class TradeController {
     }
 
     @GetMapping("/{orderId}")
-    public ExchangeClient.ExchangeOrder getOrder(@PathVariable String orderId) {
-        return tradeService.getOrder(orderId);
+    public ExchangeClient.ExchangeOrder getOrder(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable String orderId) {
+        return tradeService.getOrder(userId, orderId);
     }
 
     @DeleteMapping("/{orderId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void cancelOrder(@PathVariable String orderId) {
-        tradeService.cancelOrder(orderId);
+    public void cancelOrder(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable String orderId) {
+        tradeService.cancelOrder(userId, orderId);
     }
 }

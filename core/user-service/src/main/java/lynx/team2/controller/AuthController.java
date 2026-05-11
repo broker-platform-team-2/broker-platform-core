@@ -5,10 +5,12 @@ import lynx.team2.models.User;
 import lynx.team2.service.EmailService;
 import lynx.team2.service.JwtService;
 import lynx.team2.service.UserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/users")
 public class AuthController {
@@ -35,10 +37,11 @@ public class AuthController {
                 request.password()
         );
 
-        emailService.sendVerificationEmail(
-                user.getEmail(),
-                user.getEmailVerificationToken()
-        );
+        try {
+            emailService.sendVerificationEmail(user.getEmail(), user.getEmailVerificationToken());
+        } catch (Exception e) {
+            log.warn("Could not send verification email to {}; user can still log in", user.getEmail(), e);
+        }
 
         String token = jwtService.generateToken(user);
 
@@ -73,11 +76,10 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     public Map<String, String> forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        User user = userService.createPasswordResetToken(request.email());
+        userService.createPasswordResetToken(request.email())
+                .ifPresent(user -> emailService.sendPasswordResetEmail(user.getEmail(), user.getPasswordResetToken()));
 
-        emailService.sendPasswordResetEmail(user.getEmail(), user.getPasswordResetToken());
-
-        return Map.of("message", "Password reset email sent");
+        return Map.of("message", "If that address is registered, a reset email has been sent");
     }
 
     @PostMapping("/reset-password")
@@ -87,9 +89,9 @@ public class AuthController {
         return Map.of("message", "Password reset successfully");
     }
 
-    @PutMapping("/{userId}/password")
+    @PutMapping("/password")
     public Map<String, String> changePassword(
-            @PathVariable Long userId,
+            @RequestHeader("X-User-Id") Long userId,
             @RequestBody ChangePasswordRequest request
     ) {
         userService.changePassword(
@@ -101,9 +103,9 @@ public class AuthController {
         return Map.of("message", "Password changed successfully");
     }
 
-    @PutMapping("/{userId}/username")
+    @PutMapping("/username")
     public AuthResponse changeUsername(
-            @PathVariable Long userId,
+            @RequestHeader("X-User-Id") Long userId,
             @RequestBody ChangeUsernameRequest request
     ) {
         User user = userService.changeUsername(userId, request.newUsername());

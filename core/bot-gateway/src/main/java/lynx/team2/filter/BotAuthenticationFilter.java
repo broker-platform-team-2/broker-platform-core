@@ -70,6 +70,7 @@ public class BotAuthenticationFilter implements GlobalFilter, Ordered {
 
             String botId = claims.get("userId", String.class);
             ServerHttpRequest mutated = request.mutate()
+                    .headers(h -> h.remove("X-Bot-Id"))
                     .header("X-Bot-Id", botId == null ? "" : botId)
                     .build();
 

@@ -56,7 +56,7 @@ public class ExchangeWebSocketClient {
     private void connect() {
         try {
             URI uri = URI.create(wsUrl + "?api_key=" + apiKey + "&api_secret=" + apiSecret);
-            log.info("Connecting to exchange WebSocket: {}", uri);
+            log.info("Connecting to exchange WebSocket: {}", wsUrl);
 
             client.execute(new TextWebSocketHandler() {
                 @Override

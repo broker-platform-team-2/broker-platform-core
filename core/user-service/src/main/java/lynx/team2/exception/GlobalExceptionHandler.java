@@ -1,8 +1,7 @@
 package lynx.team2.exception;
 
-import lynx.team2.exceptions.RepoException;
-import lynx.team2.exceptions.ValidatorException;
 import lombok.extern.slf4j.Slf4j;
+import lynx.team2.exception.EmailNotVerifiedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,15 +13,21 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(RepoException.class)
-    public ResponseEntity<Map<String, String>> handleRepoException(RepoException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<Map<String, String>> handleEmailNotVerified(EmailNotVerifiedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(Map.of("error", e.getMessage()));
     }
 
-    @ExceptionHandler(ValidatorException.class)
-    public ResponseEntity<Map<String, String>> handleValidatorException(ValidatorException e) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalState(IllegalStateException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", e.getMessage()));
     }
 

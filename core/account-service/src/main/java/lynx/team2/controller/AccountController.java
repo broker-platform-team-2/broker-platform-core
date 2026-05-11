@@ -8,8 +8,10 @@ import lynx.team2.dto.FundsOperationResponse;
 import lynx.team2.models.Account;
 import lynx.team2.service.AccountService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -18,6 +20,9 @@ import java.util.List;
 public class AccountController {
 
     private final AccountService accountService;
+
+    @Value("${internal.token}")
+    private String internalToken;
 
     // --- User-facing endpoints (userId injected by gateway as X-User-Id header) ---
 
@@ -69,25 +74,43 @@ public class AccountController {
 
     @PostMapping("/funds/freeze")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void freezeFunds(@RequestBody FundsOperationRequest request) {
+    public void freezeFunds(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestBody FundsOperationRequest request) {
+        verifyInternalToken(token);
         accountService.freezeFunds(request.userId(), request.currency(), request.amount());
     }
 
     @PostMapping("/funds/unfreeze")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unfreezeFunds(@RequestBody FundsOperationRequest request) {
+    public void unfreezeFunds(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestBody FundsOperationRequest request) {
+        verifyInternalToken(token);
         accountService.unfreezeFunds(request.userId(), request.currency(), request.amount());
     }
 
     @PostMapping("/funds/deduct/frozen")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deductFrozenFunds(@RequestBody FundsOperationRequest request) {
+    public void deductFrozenFunds(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestBody FundsOperationRequest request) {
+        verifyInternalToken(token);
         accountService.deductFrozenFunds(request.userId(), request.currency(), request.amount());
     }
 
     @PostMapping("/funds/deduct")
-    public void deductFunds(@RequestBody FundsOperationRequest request) {
+    public void deductFunds(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestBody FundsOperationRequest request) {
+        verifyInternalToken(token);
         accountService.deductFunds(request.userId(), request.currency(), request.amount());
+    }
+
+    private void verifyInternalToken(String token) {
+        if (!internalToken.equals(token)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
     }
 
     @PostMapping("/funds/withdraw")

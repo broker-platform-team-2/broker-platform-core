@@ -1,3 +1,9 @@
+networks:
+  internal:
+    driver: bridge
+  public:
+    driver: bridge
+
 services:
   db:
     image: postgres:16
@@ -16,6 +22,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks: [internal]
 
   user-service:
     build:
@@ -23,8 +30,6 @@ services:
       dockerfile: user-service/Dockerfile
     container_name: user_service
     restart: unless-stopped
-    ports:
-      - "8082:8082"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
@@ -35,6 +40,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [internal]
 
   account-service:
     build:
@@ -42,15 +48,15 @@ services:
       dockerfile: account-service/Dockerfile
     container_name: account_service
     restart: unless-stopped
-    ports:
-      - "8083:8083"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
         condition: service_healthy
+    networks: [internal]
 
   transaction-service:
     build:
@@ -58,8 +64,6 @@ services:
       dockerfile: transaction-service/Dockerfile
     container_name: transaction_service
     restart: unless-stopped
-    ports:
-      - "8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
@@ -67,6 +71,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [internal]
 
   holdings-service:
     build:
@@ -74,8 +79,6 @@ services:
       dockerfile: holdings-service/Dockerfile
     container_name: holdings_service
     restart: unless-stopped
-    ports:
-      - "8085:8085"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
@@ -83,6 +86,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [internal]
 
   trade-service:
     build:
@@ -90,8 +94,6 @@ services:
       dockerfile: trade-service/Dockerfile
     container_name: trade_service
     restart: unless-stopped
-    ports:
-      - "8086:8086"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
@@ -99,9 +101,10 @@ services:
       SERVICES_ACCOUNT_URL: http://account-service:8083
       SERVICES_TRANSACTION_URL: http://transaction-service:8084
       SERVICES_HOLDINGS_URL: http://holdings-service:8085
-      EXCHANGE_BASE_URL: ${EXCHANGE_BASE_URL:-http://localhost:9000/api/v1}
-      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY:-dev-key}
-      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET:-dev-secret}
+      EXCHANGE_BASE_URL: ${EXCHANGE_BASE_URL}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
         condition: service_healthy
@@ -111,6 +114,7 @@ services:
         condition: service_started
       holdings-service:
         condition: service_started
+    networks: [internal]
 
   exchange-client-service:
     build:
@@ -118,8 +122,6 @@ services:
       dockerfile: exchange-client-service/Dockerfile
     container_name: exchange_client_service
     restart: unless-stopped
-    ports:
-      - "8087:8087"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
@@ -128,9 +130,10 @@ services:
       SERVICES_TRANSACTION_URL: http://transaction-service:8084
       SERVICES_HOLDINGS_URL: http://holdings-service:8085
       SERVICES_NOTIFICATION_URL: http://notification-service:8088
-      EXCHANGE_WS_URL: ${EXCHANGE_WS_URL:-ws://localhost:9000/ws}
-      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY:-dev-key}
-      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET:-dev-secret}
+      EXCHANGE_WS_URL: ${EXCHANGE_WS_URL}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
         condition: service_healthy
@@ -142,6 +145,7 @@ services:
         condition: service_started
       notification-service:
         condition: service_started
+    networks: [internal]
 
   notification-service:
     build:
@@ -149,16 +153,16 @@ services:
       dockerfile: notification-service/Dockerfile
     container_name: notification_service
     restart: unless-stopped
-    ports:
-      - "8088:8088"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
         condition: service_healthy
+    networks: [internal]
 
   user-gateway:
     build:
@@ -179,6 +183,7 @@ services:
       - account-service
       - transaction-service
       - holdings-service
+    networks: [internal, public]
 
   bot-gateway:
     build:
@@ -199,6 +204,7 @@ services:
       - account-service
       - transaction-service
       - holdings-service
+    networks: [internal, public]
 
 volumes:
   pgdata:

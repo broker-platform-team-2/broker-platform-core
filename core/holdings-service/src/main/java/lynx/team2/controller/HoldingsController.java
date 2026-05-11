@@ -12,6 +12,7 @@ import lynx.team2.service.HoldingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -65,11 +66,16 @@ public class HoldingsController {
 
     @PutMapping("/holdings/{id}")
     public HoldingResponse updateHolding(
+            @RequestHeader("X-User-Id") Long userId,
             @PathVariable Long id,
             @RequestBody UpdateHoldingRequest request
     ) {
         Holding existing = holdingsRepository.findById(id)
                 .orElseThrow(() -> new RepoException("Holding not found: " + id));
+
+        if (!existing.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
 
         existing.setAmount(request.amount());
         existing.setAverageCost(request.averageCost());
@@ -79,7 +85,17 @@ public class HoldingsController {
 
     @DeleteMapping("/holdings/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteHolding(@PathVariable Long id) {
+    public void deleteHolding(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long id
+    ) {
+        Holding existing = holdingsRepository.findById(id)
+                .orElseThrow(() -> new RepoException("Holding not found: " + id));
+
+        if (!existing.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
+
         holdingsService.deleteHolding(id);
     }
 

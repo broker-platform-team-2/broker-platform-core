@@ -76,6 +76,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             String username = claims.get("username", String.class);
 
             ServerHttpRequest mutated = request.mutate()
+                    .headers(h -> { h.remove("X-User-Id"); h.remove("X-Username"); })
                     .header("X-User-Id", userId == null ? "" : userId)
                     .header("X-Username", username == null ? "" : username)
                     .build();

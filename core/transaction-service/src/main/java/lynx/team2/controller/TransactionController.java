@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -67,7 +68,14 @@ public class TransactionController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteTransaction(@PathVariable Long id) {
+    public void deleteTransaction(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long id) {
+        Transaction transaction = transactionService.findById(id)
+                .orElseThrow(() -> new RepoException("Transaction not found: " + id));
+        if (!transaction.getUser().getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        }
         transactionService.deleteTransaction(id);
     }
 

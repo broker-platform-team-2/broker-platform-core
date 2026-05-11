@@ -2,6 +2,7 @@ package lynx.team2.exception;
 
 import lynx.team2.exceptions.RepoException;
 import lynx.team2.exceptions.ValidatorException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,6 +11,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -28,15 +30,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RestClientResponseException.class)
     public ResponseEntity<Map<String, String>> handleRestClientException(RestClientResponseException e) {
         return ResponseEntity.status(e.getStatusCode())
-                .body(Map.of(
-                        "error", "Downstream service error",
-                        "details", e.getResponseBodyAsString()
-                ));
+                .body(Map.of("error", "Downstream service error"));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, String>> handleException(Exception e) {
+        log.error("Unhandled exception", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "Internal server error: " + e.getMessage()));
+                .body(Map.of("error", "An unexpected error occurred"));
     }
 }

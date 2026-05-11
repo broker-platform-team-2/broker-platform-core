@@ -30,12 +30,8 @@ public class UserService {
     }
 
     public User signUp(String email, String username, String rawPassword) {
-        if (userRepository.existsByEmail(email)) {
-            throw new IllegalStateException("Email already exists");
-        }
-
-        if (userRepository.existsByUsername(username)) {
-            throw new IllegalStateException("Username already exists");
+        if (userRepository.existsByEmail(email) || userRepository.existsByUsername(username)) {
+            throw new IllegalStateException("Registration failed");
         }
 
         User user = new User();
@@ -122,14 +118,12 @@ public class UserService {
         userRepository.save(user);
     }
 
-    public User createPasswordResetToken(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-
-        user.setPasswordResetToken(UUID.randomUUID().toString());
-        user.setPasswordResetTokenExpiresAt(LocalDateTime.now().plusMinutes(30));
-
-        return userRepository.save(user);
+    public java.util.Optional<User> createPasswordResetToken(String email) {
+        return userRepository.findByEmail(email).map(user -> {
+            user.setPasswordResetToken(UUID.randomUUID().toString());
+            user.setPasswordResetTokenExpiresAt(LocalDateTime.now().plusMinutes(30));
+            return userRepository.save(user);
+        });
     }
 
     public void resetPassword(String token, String newPassword) {
