@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
@@ -20,10 +21,11 @@ COPY bot-gateway/build.gradle bot-gateway/build.gradle
 COPY common/src/ common/src/
 COPY notification-service/src/ notification-service/src/
 
-RUN chmod +x gradlew && ./gradlew :notification-service:bootJar --no-daemon -x test
+RUN --mount=type=cache,id=gradle-cache,sharing=locked,target=/root/.gradle \
+    chmod +x gradlew && ./gradlew :notification-service:bootJar --no-daemon -x test
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=builder /app/notification-service/build/libs/*.jar app.jar
-EXPOSE 8088
+EXPOSE 8188
 ENTRYPOINT ["java", "-jar", "app.jar"]

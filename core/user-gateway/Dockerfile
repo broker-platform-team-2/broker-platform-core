@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
@@ -19,10 +20,11 @@ COPY bot-gateway/build.gradle bot-gateway/build.gradle
 
 COPY user-gateway/src/ user-gateway/src/
 
-RUN chmod +x gradlew && ./gradlew :user-gateway:bootJar --no-daemon -x test
+RUN --mount=type=cache,id=gradle-cache,sharing=locked,target=/root/.gradle \
+    chmod +x gradlew && ./gradlew :user-gateway:bootJar --no-daemon -x test
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=builder /app/user-gateway/build/libs/*.jar app.jar
-EXPOSE 8080
+EXPOSE 8180
 ENTRYPOINT ["java", "-jar", "app.jar"]
