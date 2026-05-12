@@ -20,6 +20,18 @@ spring:
           uri: ${HOLDINGS_SERVICE_URL:http://localhost:8185}
           predicates:
             - Path=/holdings/**,/portfolio/**
+        - id: notification-ws
+          uri: ws://notification-service:8188
+          predicates:
+            - Path=/notifications/ws
+        - id: exchange-proxy
+          uri: ${EXCHANGE_URL:http://localhost:8085}
+          predicates:
+            - Path=/exchange/**
+          filters:
+            - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
+            - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
+            - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
 
 server:
   port: 8180

@@ -13,7 +13,7 @@ public class NotificationServiceClient {
     private final String internalToken;
 
     public NotificationServiceClient(
-            @Qualifier("notificationServiceClient") RestClient client,
+            @Qualifier("notificationRestClient") RestClient client,
             @Value("${internal.token}") String internalToken) {
         this.client = client;
         this.internalToken = internalToken;

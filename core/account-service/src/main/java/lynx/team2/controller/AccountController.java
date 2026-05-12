@@ -30,7 +30,7 @@ public class AccountController {
     @GetMapping("/accounts/me")
     public List<AccountResponse> getMyAccounts(@RequestHeader("X-User-Id") Long userId) {
         return accountService.getAccountsByUserId(userId).stream()
-                .map(this::toResponse)
+                .map(account -> toResponse(account, userId))
                 .toList();
     }
 
@@ -56,7 +56,7 @@ public class AccountController {
             @RequestHeader("X-User-Id") Long userId,
             @RequestBody DepositRequest request
     ) {
-        return toResponse(accountService.depositFunds(userId, request.currency(), request.amount()));
+        return toResponse(accountService.depositFunds(userId, request.currency(), request.amount()), userId);
     }
 
     // --- Internal endpoints (called by other services; userId in request body) ---
@@ -69,7 +69,7 @@ public class AccountController {
     ) {
         // We ignore any userId inside the request body and
         // strictly use the one provided in the 'X-User-Id' header.
-        return toResponse(accountService.createAccount(userId, request.currency()));
+        return toResponse(accountService.createAccount(userId, request.currency()), userId);
     }
 
     @PostMapping("/funds/freeze")
@@ -118,14 +118,13 @@ public class AccountController {
             @RequestHeader("X-User-Id") Long userId,
             @RequestBody DepositRequest request // Using DepositRequest since it's just currency + amount
     ) {
-        // We reuse the toResponse helper to send back the updated balance state
-        return toResponse(accountService.deductFunds(userId, request.currency(), request.amount()));
+        return toResponse(accountService.deductFunds(userId, request.currency(), request.amount()), userId);
     }
 
-    private AccountResponse toResponse(Account account) {
+    private AccountResponse toResponse(Account account, Long userId) {
         return new AccountResponse(
                 account.getAccountId(),
-                account.getUser().getUserId(),
+                userId,
                 account.getBalance(),
                 account.getFrozenBalance(),
                 account.getCurrency()

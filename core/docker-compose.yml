@@ -178,6 +178,9 @@ services:
       ACCOUNT_SERVICE_URL: http://account-service:8183
       TRANSACTION_SERVICE_URL: http://transaction-service:8184
       HOLDINGS_SERVICE_URL: http://holdings-service:8185
+      EXCHANGE_URL: ${EXCHANGE_URL}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
     depends_on:
       - user-service
       - account-service

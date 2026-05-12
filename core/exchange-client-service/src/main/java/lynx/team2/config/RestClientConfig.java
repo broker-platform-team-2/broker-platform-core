@@ -23,8 +23,8 @@ public class RestClientConfig {
         return RestClient.builder().baseUrl(baseUrl).build();
     }
 
-    @Bean("notificationServiceClient")
-    public RestClient notificationServiceClient(@Value("${services.notification.url}") String baseUrl) {
+    @Bean("notificationRestClient")
+    public RestClient notificationRestClient(@Value("${services.notification.url}") String baseUrl) {
         return RestClient.builder().baseUrl(baseUrl).build();
     }
 }

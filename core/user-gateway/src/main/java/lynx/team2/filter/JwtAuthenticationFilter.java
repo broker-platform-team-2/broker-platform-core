@@ -88,7 +88,9 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isPublic(String path) {
-        return PUBLIC_PATHS.stream().anyMatch(path::equals);
+        return PUBLIC_PATHS.stream().anyMatch(path::equals)
+                || path.startsWith("/exchange/")
+                || path.equals("/notifications/ws");
     }
 
     private Mono<Void> reject(ServerWebExchange exchange, String message) {
