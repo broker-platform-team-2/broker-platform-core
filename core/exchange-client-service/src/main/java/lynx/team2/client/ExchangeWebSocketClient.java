@@ -63,7 +63,6 @@ public class ExchangeWebSocketClient {
                 public void afterConnectionEstablished(WebSocketSession ws) throws Exception {
                     session.set(ws);
                     log.info("Connected to exchange WebSocket");
-                    subscribe(ws, "PRICE_FEED", null);
                     subscribe(ws, "ORDER_UPDATES", null);
                     subscribe(ws, "MARKET_EVENTS", null);
                 }

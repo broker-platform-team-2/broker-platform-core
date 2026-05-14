@@ -29,8 +29,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RestClientResponseException.class)
     public ResponseEntity<Map<String, String>> handleRestClientException(RestClientResponseException e) {
+        log.error("Downstream service error: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
         return ResponseEntity.status(e.getStatusCode())
-                .body(Map.of("error", "Downstream service error"));
+                .body(Map.of("error", "Downstream service error: " + e.getResponseBodyAsString()));
     }
 
     @ExceptionHandler(Exception.class)

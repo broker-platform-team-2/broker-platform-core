@@ -46,6 +46,12 @@ public class Transaction{
     @Column(name="quantity",nullable = false)
     private Integer quantity;
 
+    @Column(name="instrument_id")
+    private String instrumentId;
+
+    @Column(name="instrument_type")
+    private String instrumentType;
+
     @Column(name="date")
     private LocalDateTime date;
 

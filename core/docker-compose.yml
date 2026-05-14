@@ -68,6 +68,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-brokerplatformdb}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
         condition: service_healthy
@@ -178,6 +179,8 @@ services:
       ACCOUNT_SERVICE_URL: http://account-service:8183
       TRANSACTION_SERVICE_URL: http://transaction-service:8184
       HOLDINGS_SERVICE_URL: http://holdings-service:8185
+      TRADE_SERVICE_URL: http://trade-service:8186
+      NOTIFICATION_SERVICE_HOST: notification-service
       EXCHANGE_URL: ${EXCHANGE_URL}
       EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
       EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
@@ -186,6 +189,8 @@ services:
       - account-service
       - transaction-service
       - holdings-service
+      - trade-service
+      - notification-service
     networks: [internal, public]
 
   bot-gateway:

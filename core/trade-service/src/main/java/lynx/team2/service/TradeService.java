@@ -63,7 +63,9 @@ public class TradeService {
                 BigDecimal.ZERO,
                 resolvePrice(request, exchangeOrder),
                 TRADE_CURRENCY,
-                request.quantity()
+                request.quantity(),
+                request.instrumentId(),
+                request.instrumentType() != null ? request.instrumentType().name() : null
         ));
 
         return new OrderResponse(
@@ -139,10 +141,20 @@ public class TradeService {
         if (request.limitPrice() != null) {
             return request.limitPrice();
         }
-        if (exchangeOrder.averageFillPrice() != null) {
+        if (exchangeOrder.averageFillPrice() != null
+                && exchangeOrder.averageFillPrice().compareTo(BigDecimal.ZERO) > 0) {
             return exchangeOrder.averageFillPrice();
         }
-        return BigDecimal.ZERO;
+        // Market order not yet filled — use current market price as placeholder
+        try {
+            ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
+            if (stock.currentPrice() != null && stock.currentPrice().compareTo(BigDecimal.ZERO) > 0) {
+                return stock.currentPrice();
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not fetch market price for {} to resolve transaction price", request.instrumentId(), e);
+        }
+        return BigDecimal.ONE; // last-resort non-zero placeholder
     }
 
     private Long parseExchangeOrderId(String id) {

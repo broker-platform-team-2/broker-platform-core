@@ -16,5 +16,7 @@ public record TransactionResponse(
         BigDecimal price,
         String currency,
         Integer quantity,
-        LocalDateTime date
+        LocalDateTime date,
+        String instrumentId,
+        String instrumentType
 ) {}

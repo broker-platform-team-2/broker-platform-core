@@ -13,5 +13,7 @@ public record CreateTransactionRequest(
         BigDecimal platformFee,
         BigDecimal price,
         String currency,
-        Integer quantity
+        Integer quantity,
+        String instrumentId,
+        String instrumentType
 ) {}

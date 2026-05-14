@@ -15,15 +15,21 @@ spring:
         - id: transaction-service
           uri: ${TRANSACTION_SERVICE_URL:http://localhost:8184}
           predicates:
-            - Path=/transactions/**,/orders/**
+            - Path=/transactions/**
+        - id: trade-service
+          uri: ${TRADE_SERVICE_URL:http://localhost:8186}
+          predicates:
+            - Path=/orders/**
         - id: holdings-service
           uri: ${HOLDINGS_SERVICE_URL:http://localhost:8185}
           predicates:
             - Path=/holdings/**,/portfolio/**
         - id: notification-ws
-          uri: ws://notification-service:8188
+          uri: ws://${NOTIFICATION_SERVICE_HOST:notification-service}:8188
           predicates:
             - Path=/notifications/ws
+          filters:
+            - RewritePath=/notifications/ws, /ws
         - id: exchange-proxy
           uri: ${EXCHANGE_URL:http://localhost:8085}
           predicates:
@@ -32,6 +38,7 @@ spring:
             - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
             - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
             - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
+            - AddRequestHeader=ADMIN-TOKEN, ${EXCHANGE_ADMIN_TOKEN:test-token}
 
 server:
   port: 8180

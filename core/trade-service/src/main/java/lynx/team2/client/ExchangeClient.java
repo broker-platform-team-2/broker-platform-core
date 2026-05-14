@@ -3,11 +3,14 @@ package lynx.team2.client;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lynx.team2.dto.PlaceOrderRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 public class ExchangeClient {
@@ -19,19 +22,19 @@ public class ExchangeClient {
     }
 
     public ExchangeOrder placeOrder(Long platformUserId, PlaceOrderRequest request) {
-        ExchangeOrderRequest body = new ExchangeOrderRequest(
-                String.valueOf(platformUserId),
-                request.instrumentType().name(),
-                request.instrumentId(),
-                request.orderType().name(),
-                request.side().name(),
-                request.quantity(),
-                request.limitPrice(),
-                request.expiresAt()
-        );
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("platform_user_id", String.valueOf(platformUserId));
+        body.put("instrument_type", request.instrumentType().name());
+        body.put("instrument_id", request.instrumentId());
+        body.put("order_type", request.orderType().name());
+        body.put("side", request.side().name());
+        body.put("quantity", request.quantity());
+        if (request.limitPrice() != null) body.put("limit_price", request.limitPrice());
+        if (request.expiresAt() != null)  body.put("expires_at", request.expiresAt().toString());
 
         return client.post()
                 .uri("/orders")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
                 .body(ExchangeOrder.class);
@@ -57,6 +60,7 @@ public class ExchangeClient {
                 .retrieve()
                 .body(StockSnapshot.class);
     }
+
 
     public record ExchangeOrderRequest(
             @JsonProperty("platform_user_id") String platformUserId,
