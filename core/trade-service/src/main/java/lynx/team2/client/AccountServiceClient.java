@@ -41,7 +41,7 @@ public class AccountServiceClient {
 
     public void deductFrozenFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
-                .uri("/funds/deduct")
+                .uri("/funds/deduct/frozen")
                 .header("X-Internal-Token", internalToken)
                 .body(new FundsOperationRequest(userId, currency, amount))
                 .retrieve()
