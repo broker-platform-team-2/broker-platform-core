@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 
 public record CreateTransactionRequest(
         Long userId,
-        Long exchangeOrderId,
+        String exchangeOrderId,
         TransactionType type,
         TransactionStatus status,
         BigDecimal platformFee,

@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 public record TransactionResponse(
         Long transactionId,
         Long userId,
-        Long exchangeOrderId,
+        String exchangeOrderId,
         TransactionType type,
         TransactionStatus status,
         BigDecimal platformFee,

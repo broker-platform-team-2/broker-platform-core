@@ -45,12 +45,12 @@ public class TransactionService {
         return repo.findAllByUser_UserIdAndDateBetween(userId, startDate, endDate);
     }
 
-    public Optional<Transaction> findByExchangeOrderId(Long exchangeOrderId) {
+    public Optional<Transaction> findByExchangeOrderId(String exchangeOrderId) {
         return repo.findByExchangeOrderId(exchangeOrderId);
     }
 
     @Transactional
-    public Transaction updateStatus(Long exchangeOrderId, TransactionStatus status) {
+    public Transaction updateStatus(String exchangeOrderId, TransactionStatus status) {
         Transaction t = repo.findByExchangeOrderId(exchangeOrderId)
                 .orElseThrow(() -> new RuntimeException("Transaction not found for exchangeOrderId=" + exchangeOrderId));
         t.setStatus(status);

@@ -78,7 +78,7 @@ public class TransactionController {
     @GetMapping("/by-exchange-order/{exchangeOrderId}")
     public TransactionResponse getByExchangeOrderId(
             @RequestHeader("X-Internal-Token") String token,
-            @PathVariable Long exchangeOrderId) {
+            @PathVariable String exchangeOrderId) {
         verifyToken(token);
         Transaction t = transactionService.findByExchangeOrderId(exchangeOrderId)
                 .orElseThrow(() -> new RepoException("Transaction not found for exchangeOrderId=" + exchangeOrderId));
@@ -88,7 +88,7 @@ public class TransactionController {
     @PatchMapping("/exchange-order/{exchangeOrderId}/status")
     public TransactionResponse updateStatus(
             @RequestHeader("X-Internal-Token") String token,
-            @PathVariable Long exchangeOrderId,
+            @PathVariable String exchangeOrderId,
             @RequestParam TransactionStatus status) {
         verifyToken(token);
         return toResponse(transactionService.updateStatus(exchangeOrderId, status));

@@ -38,20 +38,19 @@ public class OrderUpdateProcessor {
                 objectMapper.convertValue(payload, Map.class)
         ));
 
-        Long exchangeOrderId = parseId(orderId);
-        if (exchangeOrderId == null) {
-            log.warn("Cannot parse exchangeOrderId from '{}'", orderId);
+        if (orderId == null || orderId.isBlank()) {
+            log.warn("Missing order_id on ORDER_UPDATE payload; cannot settle");
             return;
         }
 
         TransactionServiceClient.TransactionDto tx;
         try {
-            tx = transactionServiceClient.findByExchangeOrderId(exchangeOrderId);
+            tx = transactionServiceClient.findByExchangeOrderId(orderId);
         } catch (HttpClientErrorException.NotFound e) {
-            log.warn("No transaction found for exchangeOrderId={}, skipping settlement", exchangeOrderId);
+            log.warn("No transaction found for exchangeOrderId={}, skipping settlement", orderId);
             return;
         } catch (Exception e) {
-            log.error("Failed to look up transaction for exchangeOrderId={}", exchangeOrderId, e);
+            log.error("Failed to look up transaction for exchangeOrderId={}", orderId, e);
             return;
         }
 
@@ -118,12 +117,4 @@ public class OrderUpdateProcessor {
         }
     }
 
-    private Long parseId(String id) {
-        if (id == null || id.isBlank()) return null;
-        try {
-            return Long.parseLong(id.replaceAll("\\D", ""));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
 }

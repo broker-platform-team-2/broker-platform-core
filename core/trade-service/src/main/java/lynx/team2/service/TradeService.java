@@ -57,7 +57,7 @@ public class TradeService {
 
         TransactionResponse tx = transactionServiceClient.createTransaction(new CreateTransactionRequest(
                 userId,
-                parseExchangeOrderId(exchangeOrder.orderId()),
+                exchangeOrder.orderId(),
                 request.side(),
                 TransactionStatus.PENDING,
                 BigDecimal.ZERO,
@@ -69,7 +69,7 @@ public class TradeService {
         ));
 
         return new OrderResponse(
-                parseExchangeOrderId(exchangeOrder.orderId()),
+                exchangeOrder.orderId(),
                 tx.transactionId(),
                 request.instrumentType(),
                 request.instrumentId(),
@@ -155,15 +155,6 @@ public class TradeService {
             log.warn("Could not fetch market price for {} to resolve transaction price", request.instrumentId(), e);
         }
         return BigDecimal.ONE; // last-resort non-zero placeholder
-    }
-
-    private Long parseExchangeOrderId(String id) {
-        if (id == null) return null;
-        try {
-            return Long.parseLong(id.replaceAll("\\D", ""));
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     private void safeUnfreeze(Long userId, BigDecimal amount) {

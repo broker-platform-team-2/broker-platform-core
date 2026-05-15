@@ -22,7 +22,7 @@ public class TransactionServiceClient {
         this.internalToken = internalToken;
     }
 
-    public TransactionDto findByExchangeOrderId(Long exchangeOrderId) {
+    public TransactionDto findByExchangeOrderId(String exchangeOrderId) {
         return client.get()
                 .uri("/transactions/by-exchange-order/{id}", exchangeOrderId)
                 .header("X-Internal-Token", internalToken)
@@ -30,7 +30,7 @@ public class TransactionServiceClient {
                 .body(TransactionDto.class);
     }
 
-    public void updateStatus(Long exchangeOrderId, String status) {
+    public void updateStatus(String exchangeOrderId, String status) {
         client.patch()
                 .uri("/transactions/exchange-order/{id}/status?status={status}", exchangeOrderId, status)
                 .header("X-Internal-Token", internalToken)
@@ -41,7 +41,7 @@ public class TransactionServiceClient {
     public record TransactionDto(
             @JsonProperty("transactionId") Long transactionId,
             @JsonProperty("userId") Long userId,
-            @JsonProperty("exchangeOrderId") Long exchangeOrderId,
+            @JsonProperty("exchangeOrderId") String exchangeOrderId,
             @JsonProperty("type") String type,
             @JsonProperty("status") String status,
             @JsonProperty("price") BigDecimal price,
