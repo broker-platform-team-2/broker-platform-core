@@ -3,6 +3,13 @@ networks:
     driver: bridge
   public:
     driver: bridge
+  # Shared with the top-level exchange docker-compose so trade-service can reach
+  # Kafka on its INTERNAL listener (kafka:9094) rather than the PLAINTEXT one
+  # (localhost:9092) which only works on the Docker host itself.
+  # The name matches the default network created by docker compose in Final_Variant/.
+  exchange_net:
+    external: true
+    name: final_variant_default
 
 services:
   db:
@@ -105,6 +112,7 @@ services:
       EXCHANGE_BASE_URL: ${EXCHANGE_BASE_URL}
       EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
       EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
     depends_on:
       db:
@@ -115,7 +123,7 @@ services:
         condition: service_started
       holdings-service:
         condition: service_started
-    networks: [internal]
+    networks: [internal, exchange_net]
 
   exchange-client-service:
     build:
