@@ -49,6 +49,10 @@ public class TransactionService {
         return repo.findByExchangeOrderId(exchangeOrderId);
     }
 
+    public List<Transaction> findAllByStatus(TransactionStatus status) {
+        return repo.findAllByStatus(status);
+    }
+
     @Transactional
     public Transaction updateStatus(String exchangeOrderId, TransactionStatus status) {
         Transaction t = repo.findByExchangeOrderId(exchangeOrderId)

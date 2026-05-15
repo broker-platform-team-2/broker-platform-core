@@ -51,10 +51,43 @@ public class ExchangeClient {
 
     @PostConstruct
     public void resolvePlatformId() {
+        // Retry a few times with backoff — the exchange may not be ready yet at startup
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                String requestBody = objectMapper.writeValueAsString(
+                        Map.of("api_key", apiKey, "api_secret", apiSecret));
+                String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
+                String response = client.post()
+                        .uri(verifyUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(requestBody)
+                        .retrieve()
+                        .body(String.class);
+                if (response != null) {
+                    JsonNode root = objectMapper.readTree(response);
+                    if (root.path("valid").asBoolean(false)) {
+                        platformId = root.path("platform_id").asText("unknown");
+                        log.info("Resolved exchange platform_id={} (attempt {})", platformId, attempt);
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Attempt {}/5 to resolve platform_id failed: {}", attempt, e.getMessage());
+                if (attempt < 5) {
+                    try { Thread.sleep(2000L * attempt); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+        log.warn("Could not resolve platform_id after 5 attempts; will retry on first order placement");
+    }
+
+    private String tryResolvePlatformId() {
         try {
             String requestBody = objectMapper.writeValueAsString(
                     Map.of("api_key", apiKey, "api_secret", apiSecret));
-            // Use the full absolute URL so Spring bypasses base-URL path resolution
             String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
             String response = client.post()
                     .uri(verifyUrl)
@@ -65,21 +98,26 @@ public class ExchangeClient {
             if (response != null) {
                 JsonNode root = objectMapper.readTree(response);
                 if (root.path("valid").asBoolean(false)) {
-                    platformId = root.path("platform_id").asText("unknown");
-                    log.info("Resolved exchange platform_id: {}", platformId);
+                    String resolved = root.path("platform_id").asText("unknown");
+                    platformId = resolved;
+                    log.info("Lazily resolved exchange platform_id={}", resolved);
+                    return resolved;
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not resolve platform_id from exchange ({}); using 'unknown'", e.getMessage());
+            log.warn("Lazy platform_id resolution failed: {}", e.getMessage());
         }
+        return "unknown";
     }
 
     public ExchangeOrder placeOrder(Long platformUserId, PlaceOrderRequest request) {
         String orderId = UUID.randomUUID().toString();
+        // If startup resolution failed, try once more before sending the order
+        String resolvedPlatformId = "unknown".equals(platformId) ? tryResolvePlatformId() : platformId;
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("order_id", orderId);
-        payload.put("platform_id", platformId);
+        payload.put("platform_id", resolvedPlatformId);
         payload.put("platform_user_id", String.valueOf(platformUserId));
         payload.put("instrument_type", request.instrumentType().name());
         payload.put("instrument_id", request.instrumentId());
@@ -99,7 +137,7 @@ public class ExchangeClient {
         // Return a synthetic acknowledgment — the order is processed asynchronously
         // by the order-book-engine. Fills arrive later via the exchange-client-service.
         return new ExchangeOrder(
-                orderId, platformId, String.valueOf(platformUserId),
+                orderId, resolvedPlatformId, String.valueOf(platformUserId),
                 request.instrumentType().name(), request.instrumentId(),
                 request.orderType().name(), request.side().name(),
                 request.quantity(), request.limitPrice(),

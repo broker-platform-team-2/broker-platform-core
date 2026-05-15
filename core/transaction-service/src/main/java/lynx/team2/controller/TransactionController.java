@@ -75,6 +75,15 @@ public class TransactionController {
 
     // --- Settlement endpoints (called by exchange-client-service, internal token required) ---
 
+    @GetMapping("/by-status")
+    public List<TransactionResponse> getByStatus(
+            @RequestHeader("X-Internal-Token") String token,
+            @RequestParam TransactionStatus status) {
+        verifyToken(token);
+        return transactionService.findAllByStatus(status).stream()
+                .map(this::toResponse).toList();
+    }
+
     @GetMapping("/by-exchange-order/{exchangeOrderId}")
     public TransactionResponse getByExchangeOrderId(
             @RequestHeader("X-Internal-Token") String token,

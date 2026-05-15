@@ -156,7 +156,7 @@ services:
         condition: service_started
       notification-service:
         condition: service_started
-    networks: [internal]
+    networks: [internal, exchange_net]
 
   notification-service:
     build:

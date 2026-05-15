@@ -33,11 +33,6 @@ public class OrderUpdateProcessor {
         String status = payload.path("status").asText();
         log.info("ORDER_UPDATE received: order_id={} status={}", orderId, status);
 
-        notificationClient.broadcast(new NotificationMessage(
-                "ORDER_UPDATE",
-                objectMapper.convertValue(payload, Map.class)
-        ));
-
         if (orderId == null || orderId.isBlank()) {
             log.warn("Missing order_id on ORDER_UPDATE payload; cannot settle");
             return;
@@ -54,6 +49,13 @@ public class OrderUpdateProcessor {
             return;
         }
 
+        // Skip if already in a terminal state (prevents double-settlement from polling + WebSocket)
+        String currentStatus = tx.status() != null ? tx.status().toUpperCase() : "";
+        if (!currentStatus.equals("PENDING") && !currentStatus.equals("PARTIALLY_FILLED")) {
+            log.debug("Transaction {} already in status {}, skipping", orderId, currentStatus);
+            return;
+        }
+
         switch (status) {
             case "FILLED" -> settle(tx, payload, "FILLED");
             case "PARTIALLY_FILLED" -> settlePartial(tx, payload);
@@ -61,6 +63,17 @@ public class OrderUpdateProcessor {
             case "EXPIRED" -> cancel(tx);
             case "REJECTED" -> cancel(tx);
             default -> log.debug("No settlement action for status={}", status);
+        }
+    }
+
+    private void broadcastUpdate(JsonNode payload) {
+        try {
+            notificationClient.broadcast(new NotificationMessage(
+                    "ORDER_UPDATE",
+                    objectMapper.convertValue(payload, Map.class)
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to broadcast ORDER_UPDATE notification: {}", e.getMessage());
         }
     }
 
@@ -74,25 +87,46 @@ public class OrderUpdateProcessor {
 
         BigDecimal settledAmount = avgPrice.multiply(BigDecimal.valueOf(filledQty));
 
+        // Step 1: settle funds — abort entirely if this fails (funds state is unknown)
         try {
             if (isBuy) {
                 accountServiceClient.deductFrozenFunds(tx.userId(), TRADE_CURRENCY, settledAmount);
-                if (!instrumentId.isBlank()) {
+            } else {
+                accountServiceClient.depositFunds(tx.userId(), TRADE_CURRENCY, settledAmount);
+            }
+        } catch (Exception e) {
+            log.error("Fund settlement failed for exchangeOrderId={} — aborting", tx.exchangeOrderId(), e);
+            return;
+        }
+
+        // Step 2: update holdings — non-critical, log and continue so status always gets updated
+        if (!instrumentId.isBlank()) {
+            try {
+                if (isBuy) {
                     holdingsServiceClient.upsertHolding(
                             tx.userId(), instrumentType, instrumentId,
                             BigDecimal.valueOf(filledQty), TRADE_CURRENCY, avgPrice);
-                }
-            } else {
-                accountServiceClient.depositFunds(tx.userId(), TRADE_CURRENCY, settledAmount);
-                if (!instrumentId.isBlank()) {
+                } else {
                     holdingsServiceClient.reduceHolding(tx.userId(), instrumentId, BigDecimal.valueOf(filledQty));
                 }
+            } catch (Exception e) {
+                log.error("Holdings update failed for exchangeOrderId={} — continuing to mark as {}",
+                        tx.exchangeOrderId(), newStatus, e);
             }
-            transactionServiceClient.updateStatus(tx.exchangeOrderId(), newStatus);
-            log.info("Settled {} order {} userId={} amount={}", isBuy ? "BUY" : "SELL", tx.exchangeOrderId(), tx.userId(), settledAmount);
-        } catch (Exception e) {
-            log.error("Settlement failed for exchangeOrderId={}", tx.exchangeOrderId(), e);
         }
+
+        // Step 3: mark transaction settled — always reached as long as funds settled
+        try {
+            transactionServiceClient.updateStatus(tx.exchangeOrderId(), newStatus);
+            log.info("Settled {} order {} userId={} amount={}", isBuy ? "BUY" : "SELL",
+                    tx.exchangeOrderId(), tx.userId(), settledAmount);
+        } catch (Exception e) {
+            log.error("Failed to mark exchangeOrderId={} as {}", tx.exchangeOrderId(), newStatus, e);
+            return;
+        }
+
+        // Step 4: notify UI only after the DB is updated
+        broadcastUpdate(payload);
     }
 
     private void settlePartial(TransactionServiceClient.TransactionDto tx, JsonNode payload) {
@@ -100,7 +134,9 @@ public class OrderUpdateProcessor {
             transactionServiceClient.updateStatus(tx.exchangeOrderId(), "PARTIALLY_FILLED");
         } catch (Exception e) {
             log.error("Failed to update partial fill status for exchangeOrderId={}", tx.exchangeOrderId(), e);
+            return;
         }
+        broadcastUpdate(payload);
     }
 
     private void cancel(TransactionServiceClient.TransactionDto tx) {
@@ -114,6 +150,17 @@ public class OrderUpdateProcessor {
             log.info("Canceled order {} userId={}", tx.exchangeOrderId(), tx.userId());
         } catch (Exception e) {
             log.error("Failed to cancel order exchangeOrderId={}", tx.exchangeOrderId(), e);
+            return;
+        }
+        // Reuse the tx fields to build a minimal notification payload
+        try {
+            notificationClient.broadcast(new NotificationMessage(
+                    "ORDER_UPDATE",
+                    Map.of("order_id", tx.exchangeOrderId(), "status", "CANCELED")
+            ));
+        } catch (Exception e) {
+            log.warn("Failed to broadcast CANCELED notification for exchangeOrderId={}: {}",
+                    tx.exchangeOrderId(), e.getMessage());
         }
     }
 

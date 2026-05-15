@@ -3,11 +3,13 @@ package lynx.team2.client;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Component
 public class TransactionServiceClient {
@@ -28,6 +30,14 @@ public class TransactionServiceClient {
                 .header("X-Internal-Token", internalToken)
                 .retrieve()
                 .body(TransactionDto.class);
+    }
+
+    public List<TransactionDto> findAllPending() {
+        return client.get()
+                .uri("/transactions/by-status?status=PENDING")
+                .header("X-Internal-Token", internalToken)
+                .retrieve()
+                .body(new ParameterizedTypeReference<>() {});
     }
 
     public void updateStatus(String exchangeOrderId, String status) {
