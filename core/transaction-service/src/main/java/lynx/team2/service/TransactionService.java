@@ -3,6 +3,7 @@ package lynx.team2.service;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lynx.team2.models.Transaction;
+import lynx.team2.models.TransactionStatus;
 import lynx.team2.repository.TransactionRepository;
 import lynx.team2.validators.TransactionValidator;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,22 @@ public class TransactionService {
 
     public List<Transaction> findAllForUserIdAndDateRange(Long userId, LocalDateTime startDate, LocalDateTime endDate){
         return repo.findAllByUser_UserIdAndDateBetween(userId, startDate, endDate);
+    }
+
+    public Optional<Transaction> findByExchangeOrderId(String exchangeOrderId) {
+        return repo.findByExchangeOrderId(exchangeOrderId);
+    }
+
+    public List<Transaction> findAllByStatus(TransactionStatus status) {
+        return repo.findAllByStatus(status);
+    }
+
+    @Transactional
+    public Transaction updateStatus(String exchangeOrderId, TransactionStatus status) {
+        Transaction t = repo.findByExchangeOrderId(exchangeOrderId)
+                .orElseThrow(() -> new RuntimeException("Transaction not found for exchangeOrderId=" + exchangeOrderId));
+        t.setStatus(status);
+        return repo.save(t);
     }
 
 }

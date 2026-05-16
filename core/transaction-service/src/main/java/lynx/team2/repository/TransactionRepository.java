@@ -1,6 +1,7 @@
 package lynx.team2.repository;
 
 import lynx.team2.models.Transaction;
+import lynx.team2.models.TransactionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,5 +17,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     public List<Transaction> findAllByUser_UserIdAndDateBetween(Long userId, LocalDateTime start, LocalDateTime end);
 
-    public Optional<Transaction> findByExchangeOrderId(Long exchangeOrderId);
+    public Optional<Transaction> findByExchangeOrderId(String exchangeOrderId);
+
+    public List<Transaction> findAllByStatus(TransactionStatus status);
 }

@@ -1,40 +1,149 @@
 package lynx.team2.client;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import lynx.team2.dto.PlaceOrderRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class ExchangeClient {
 
-    private final RestClient client;
+    private static final String ORDERS_TOPIC = "orders.requests";
 
-    public ExchangeClient(@Qualifier("exchangeRestClient") RestClient client) {
+    private final RestClient client;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
+    private final String apiKey;
+    private final String apiSecret;
+    private final String exchangeBaseUrl;
+
+    private volatile String platformId = "unknown";
+
+    public ExchangeClient(@Qualifier("exchangeRestClient") RestClient client,
+                          KafkaTemplate<String, String> kafkaTemplate,
+                          ObjectMapper objectMapper,
+                          @Value("${exchange.api-key}") String apiKey,
+                          @Value("${exchange.api-secret}") String apiSecret,
+                          @Value("${exchange.base-url}") String exchangeBaseUrl) {
         this.client = client;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
+        this.apiKey = apiKey;
+        this.apiSecret = apiSecret;
+        this.exchangeBaseUrl = exchangeBaseUrl;
+    }
+
+    @PostConstruct
+    public void resolvePlatformId() {
+        // Retry a few times with backoff — the exchange may not be ready yet at startup
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            try {
+                String requestBody = objectMapper.writeValueAsString(
+                        Map.of("api_key", apiKey, "api_secret", apiSecret));
+                String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
+                String response = client.post()
+                        .uri(verifyUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(requestBody)
+                        .retrieve()
+                        .body(String.class);
+                if (response != null) {
+                    JsonNode root = objectMapper.readTree(response);
+                    if (root.path("valid").asBoolean(false)) {
+                        platformId = root.path("platform_id").asText("unknown");
+                        log.info("Resolved exchange platform_id={} (attempt {})", platformId, attempt);
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Attempt {}/5 to resolve platform_id failed: {}", attempt, e.getMessage());
+                if (attempt < 5) {
+                    try { Thread.sleep(2000L * attempt); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }
+        log.warn("Could not resolve platform_id after 5 attempts; will retry on first order placement");
+    }
+
+    private String tryResolvePlatformId() {
+        try {
+            String requestBody = objectMapper.writeValueAsString(
+                    Map.of("api_key", apiKey, "api_secret", apiSecret));
+            String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
+            String response = client.post()
+                    .uri(verifyUrl)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+            if (response != null) {
+                JsonNode root = objectMapper.readTree(response);
+                if (root.path("valid").asBoolean(false)) {
+                    String resolved = root.path("platform_id").asText("unknown");
+                    platformId = resolved;
+                    log.info("Lazily resolved exchange platform_id={}", resolved);
+                    return resolved;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Lazy platform_id resolution failed: {}", e.getMessage());
+        }
+        return "unknown";
     }
 
     public ExchangeOrder placeOrder(Long platformUserId, PlaceOrderRequest request) {
-        ExchangeOrderRequest body = new ExchangeOrderRequest(
-                String.valueOf(platformUserId),
-                request.instrumentType().name(),
-                request.instrumentId(),
-                request.orderType().name(),
-                request.side().name(),
-                request.quantity(),
-                request.limitPrice(),
-                request.expiresAt()
-        );
+        String orderId = UUID.randomUUID().toString();
+        // If startup resolution failed, try once more before sending the order
+        String resolvedPlatformId = "unknown".equals(platformId) ? tryResolvePlatformId() : platformId;
 
-        return client.post()
-                .uri("/orders")
-                .body(body)
-                .retrieve()
-                .body(ExchangeOrder.class);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("order_id", orderId);
+        payload.put("platform_id", resolvedPlatformId);
+        payload.put("platform_user_id", String.valueOf(platformUserId));
+        payload.put("instrument_type", request.instrumentType().name());
+        payload.put("instrument_id", request.instrumentId());
+        payload.put("order_type", request.orderType().name());
+        payload.put("side", request.side().name());
+        payload.put("quantity", request.quantity());
+        if (request.limitPrice() != null) payload.put("limit_price", request.limitPrice());
+        if (request.expiresAt() != null)  payload.put("expires_at", request.expiresAt().toString());
+
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            kafkaTemplate.send(ORDERS_TOPIC, orderId, json).get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to publish order to exchange: " + e.getMessage(), e);
+        }
+
+        // Return a synthetic acknowledgment — the order is processed asynchronously
+        // by the order-book-engine. Fills arrive later via the exchange-client-service.
+        return new ExchangeOrder(
+                orderId, resolvedPlatformId, String.valueOf(platformUserId),
+                request.instrumentType().name(), request.instrumentId(),
+                request.orderType().name(), request.side().name(),
+                request.quantity(), request.limitPrice(),
+                "PENDING", 0, null, null,
+                LocalDateTime.now(), LocalDateTime.now(), request.expiresAt()
+        );
     }
 
     public ExchangeOrder getOrder(String orderId) {
@@ -57,6 +166,7 @@ public class ExchangeClient {
                 .retrieve()
                 .body(StockSnapshot.class);
     }
+
 
     public record ExchangeOrderRequest(
             @JsonProperty("platform_user_id") String platformUserId,

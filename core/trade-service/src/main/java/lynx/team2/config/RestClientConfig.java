@@ -31,7 +31,8 @@ public class RestClientConfig {
     ) {
         return RestClient.builder()
                 .baseUrl(baseUrl)
-                .defaultHeader("Authorization", "Bearer " + apiKey + ":" + apiSecret)
+                .defaultHeader("API-KEY", apiKey)
+                .defaultHeader("API-SECRET", apiSecret)
                 .build();
     }
 }

@@ -9,12 +9,14 @@ import java.time.LocalDateTime;
 public record TransactionResponse(
         Long transactionId,
         Long userId,
-        Long exchangeOrderId,
+        String exchangeOrderId,
         TransactionType type,
         TransactionStatus status,
         BigDecimal platformFee,
         BigDecimal price,
         String currency,
         Integer quantity,
-        LocalDateTime date
+        LocalDateTime date,
+        String instrumentId,
+        String instrumentType
 ) {}

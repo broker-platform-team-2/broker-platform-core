@@ -14,5 +14,6 @@ public record PlaceOrderRequest(
         TransactionType side,
         Integer quantity,
         BigDecimal limitPrice,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        String currency
 ) {}

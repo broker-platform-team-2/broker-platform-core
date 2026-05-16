@@ -13,6 +13,7 @@ import lynx.team2.exceptions.ValidatorException;
 import lynx.team2.models.OrderType;
 import lynx.team2.models.TransactionStatus;
 import lynx.team2.models.TransactionType;
+import lynx.team2.util.CurrencyConverter;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,21 +29,19 @@ public class TradeService {
     private final TransactionServiceClient transactionServiceClient;
     private final ExchangeClient exchangeClient;
 
-    /**
-     * Currency that platform-side trades are settled in. Stocks on Wakibi Exchange are
-     * quoted in EUR (see UI mockups), so this is the account we freeze / deduct against.
-     * If we ever support cross-currency instruments this needs to come from the order.
-     */
-    private static final String TRADE_CURRENCY = "EUR";
-
     public OrderResponse placeOrder(Long userId, PlaceOrderRequest request) {
         validate(request);
 
-        BigDecimal estimatedCost = estimateCost(request);
+        String currency = (request.currency() != null && !request.currency().isBlank())
+                ? request.currency() : "USD";
+
+        BigDecimal estimatedCostUSD = estimateCost(request);
+        BigDecimal estimatedCost = estimatedCostUSD != null
+                ? CurrencyConverter.fromUSD(estimatedCostUSD, currency) : null;
         boolean shouldFreeze = request.side() == TransactionType.BUY && estimatedCost != null;
 
         if (shouldFreeze) {
-            accountServiceClient.freezeFunds(userId, TRADE_CURRENCY, estimatedCost);
+            accountServiceClient.freezeFunds(userId, currency, estimatedCost);
         }
 
         ExchangeClient.ExchangeOrder exchangeOrder;
@@ -50,24 +49,26 @@ public class TradeService {
             exchangeOrder = exchangeClient.placeOrder(userId, request);
         } catch (RuntimeException e) {
             if (shouldFreeze) {
-                safeUnfreeze(userId, estimatedCost);
+                safeUnfreeze(userId, currency, estimatedCost);
             }
             throw e;
         }
 
         TransactionResponse tx = transactionServiceClient.createTransaction(new CreateTransactionRequest(
                 userId,
-                parseExchangeOrderId(exchangeOrder.orderId()),
+                exchangeOrder.orderId(),
                 request.side(),
                 TransactionStatus.PENDING,
                 BigDecimal.ZERO,
                 resolvePrice(request, exchangeOrder),
-                TRADE_CURRENCY,
-                request.quantity()
+                currency,
+                request.quantity(),
+                request.instrumentId(),
+                request.instrumentType() != null ? request.instrumentType().name() : null
         ));
 
         return new OrderResponse(
-                parseExchangeOrderId(exchangeOrder.orderId()),
+                exchangeOrder.orderId(),
                 tx.transactionId(),
                 request.instrumentType(),
                 request.instrumentId(),
@@ -139,27 +140,28 @@ public class TradeService {
         if (request.limitPrice() != null) {
             return request.limitPrice();
         }
-        if (exchangeOrder.averageFillPrice() != null) {
+        if (exchangeOrder.averageFillPrice() != null
+                && exchangeOrder.averageFillPrice().compareTo(BigDecimal.ZERO) > 0) {
             return exchangeOrder.averageFillPrice();
         }
-        return BigDecimal.ZERO;
-    }
-
-    private Long parseExchangeOrderId(String id) {
-        if (id == null) return null;
+        // Market order not yet filled — use current market price as placeholder
         try {
-            return Long.parseLong(id.replaceAll("\\D", ""));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private void safeUnfreeze(Long userId, BigDecimal amount) {
-        try {
-            accountServiceClient.unfreezeFunds(userId, TRADE_CURRENCY, amount);
+            ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
+            if (stock.currentPrice() != null && stock.currentPrice().compareTo(BigDecimal.ZERO) > 0) {
+                return stock.currentPrice();
+            }
         } catch (RuntimeException e) {
-            log.error("Failed to unfreeze funds for user {} amount {}; manual reconciliation required",
-                    userId, amount, e);
+            log.warn("Could not fetch market price for {} to resolve transaction price", request.instrumentId(), e);
+        }
+        return BigDecimal.ONE; // last-resort non-zero placeholder
+    }
+
+    private void safeUnfreeze(Long userId, String currency, BigDecimal amount) {
+        try {
+            accountServiceClient.unfreezeFunds(userId, currency, amount);
+        } catch (RuntimeException e) {
+            log.error("Failed to unfreeze funds for user {} amount {} {}; manual reconciliation required",
+                    userId, amount, currency, e);
         }
     }
 }

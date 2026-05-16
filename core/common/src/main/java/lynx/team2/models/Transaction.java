@@ -24,7 +24,7 @@ public class Transaction{
     private User user;
 
     @Column(name="exchange_order_id",unique = true)
-    private Long exchangeOrderId;
+    private String exchangeOrderId;
 
     @Enumerated(EnumType.STRING)
     @Column(name="type",nullable = false)
@@ -45,6 +45,12 @@ public class Transaction{
 
     @Column(name="quantity",nullable = false)
     private Integer quantity;
+
+    @Column(name="instrument_id")
+    private String instrumentId;
+
+    @Column(name="instrument_type")
+    private String instrumentType;
 
     @Column(name="date")
     private LocalDateTime date;

@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record OrderResponse(
-        Long exchangeOrderId,
+        String exchangeOrderId,
         Long transactionId,
         InstrumentType instrumentType,
         String instrumentId,

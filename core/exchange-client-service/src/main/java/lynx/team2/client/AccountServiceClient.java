@@ -1,12 +1,12 @@
 package lynx.team2.client;
 
-import lynx.team2.dto.FundsOperationRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Component
 public class AccountServiceClient {
@@ -21,11 +21,11 @@ public class AccountServiceClient {
         this.internalToken = internalToken;
     }
 
-    public void freezeFunds(Long userId, String currency, BigDecimal amount) {
+    public void deductFrozenFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
-                .uri("/funds/freeze")
+                .uri("/funds/deduct/frozen")
                 .header("X-Internal-Token", internalToken)
-                .body(new FundsOperationRequest(userId, currency, amount))
+                .body(Map.of("userId", userId, "currency", currency, "amount", amount))
                 .retrieve()
                 .toBodilessEntity();
     }
@@ -34,16 +34,16 @@ public class AccountServiceClient {
         client.post()
                 .uri("/funds/unfreeze")
                 .header("X-Internal-Token", internalToken)
-                .body(new FundsOperationRequest(userId, currency, amount))
+                .body(Map.of("userId", userId, "currency", currency, "amount", amount))
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public void deductFrozenFunds(Long userId, String currency, BigDecimal amount) {
+    public void depositFunds(Long userId, String currency, BigDecimal amount) {
         client.post()
-                .uri("/funds/deduct/frozen")
-                .header("X-Internal-Token", internalToken)
-                .body(new FundsOperationRequest(userId, currency, amount))
+                .uri("/funds/deposit")
+                .header("X-User-Id", userId.toString())
+                .body(Map.of("currency", currency, "amount", amount))
                 .retrieve()
                 .toBodilessEntity();
     }
