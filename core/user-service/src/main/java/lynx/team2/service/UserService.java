@@ -46,10 +46,7 @@ public class UserService {
         savedUser.setPlatformUserId(savedUser.getUserId());
         User finalUser = userRepository.save(savedUser);
 
-        // Bootstrap the user's wallets. Wakibi Trade is multi-currency by default
-        // (see landing page promise: "EUR and RON accounts side-by-side"), so create
-        // both at signup. Failures don't block account creation — just log loudly.
-        for (String currency : DEFAULT_CURRENCIES) {
+            for (String currency : DEFAULT_CURRENCIES) {
             try {
                 accountServiceClient.createAccount(finalUser.getUserId(), currency);
             } catch (RuntimeException e) {
@@ -61,7 +58,7 @@ public class UserService {
         return finalUser;
     }
 
-    private static final java.util.List<String> DEFAULT_CURRENCIES = java.util.List.of("EUR", "RON");
+    private static final java.util.List<String> DEFAULT_CURRENCIES = java.util.List.of("USD", "RON");
 
     @Transactional(readOnly = true)
     public User login(String email, String rawPassword) {

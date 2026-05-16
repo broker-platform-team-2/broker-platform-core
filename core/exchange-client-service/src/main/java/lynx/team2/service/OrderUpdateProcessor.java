@@ -9,6 +9,7 @@ import lynx.team2.client.HoldingsServiceClient;
 import lynx.team2.client.NotificationServiceClient;
 import lynx.team2.client.TransactionServiceClient;
 import lynx.team2.dto.NotificationMessage;
+import lynx.team2.util.CurrencyConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -25,8 +26,6 @@ public class OrderUpdateProcessor {
     private final TransactionServiceClient transactionServiceClient;
     private final AccountServiceClient accountServiceClient;
     private final HoldingsServiceClient holdingsServiceClient;
-
-    private static final String TRADE_CURRENCY = "EUR";
 
     public void process(JsonNode payload) {
         String orderId = payload.path("order_id").asText();
@@ -79,33 +78,35 @@ public class OrderUpdateProcessor {
 
     private void settle(TransactionServiceClient.TransactionDto tx, JsonNode payload, String newStatus) {
         int filledQty = payload.path("filled_quantity").asInt(tx.quantity());
-        BigDecimal avgPrice = new BigDecimal(payload.path("average_fill_price")
+        BigDecimal avgPriceUSD = new BigDecimal(payload.path("average_fill_price")
                 .asText(tx.price() != null ? tx.price().toPlainString() : "0"));
         String instrumentId = tx.instrumentId() != null ? tx.instrumentId() : "";
         String instrumentType = tx.instrumentType() != null ? tx.instrumentType() : "STOCK";
         boolean isBuy = "BUY".equalsIgnoreCase(tx.type());
 
-        BigDecimal settledAmount = avgPrice.multiply(BigDecimal.valueOf(filledQty));
+        String accountCurrency = (tx.currency() != null && !tx.currency().isBlank()) ? tx.currency() : "USD";
+        BigDecimal settledAmountUSD = avgPriceUSD.multiply(BigDecimal.valueOf(filledQty));
+        BigDecimal settledAmount = CurrencyConverter.fromUSD(settledAmountUSD, accountCurrency);
 
         // Step 1: settle funds — abort entirely if this fails (funds state is unknown)
         try {
             if (isBuy) {
-                accountServiceClient.deductFrozenFunds(tx.userId(), TRADE_CURRENCY, settledAmount);
+                accountServiceClient.deductFrozenFunds(tx.userId(), accountCurrency, settledAmount);
             } else {
-                accountServiceClient.depositFunds(tx.userId(), TRADE_CURRENCY, settledAmount);
+                accountServiceClient.depositFunds(tx.userId(), accountCurrency, settledAmount);
             }
         } catch (Exception e) {
             log.error("Fund settlement failed for exchangeOrderId={} — aborting", tx.exchangeOrderId(), e);
             return;
         }
 
-        // Step 2: update holdings — non-critical, log and continue so status always gets updated
+        // Step 2: update holdings — cost basis stored in USD (exchange native currency)
         if (!instrumentId.isBlank()) {
             try {
                 if (isBuy) {
                     holdingsServiceClient.upsertHolding(
                             tx.userId(), instrumentType, instrumentId,
-                            BigDecimal.valueOf(filledQty), TRADE_CURRENCY, avgPrice);
+                            BigDecimal.valueOf(filledQty), "USD", avgPriceUSD);
                 } else {
                     holdingsServiceClient.reduceHolding(tx.userId(), instrumentId, BigDecimal.valueOf(filledQty));
                 }
@@ -141,10 +142,12 @@ public class OrderUpdateProcessor {
 
     private void cancel(TransactionServiceClient.TransactionDto tx) {
         boolean isBuy = "BUY".equalsIgnoreCase(tx.type());
+        String accountCurrency = (tx.currency() != null && !tx.currency().isBlank()) ? tx.currency() : "USD";
         try {
             if (isBuy && tx.price() != null && tx.quantity() != null) {
-                BigDecimal frozenEstimate = tx.price().multiply(BigDecimal.valueOf(tx.quantity()));
-                accountServiceClient.unfreezeFunds(tx.userId(), TRADE_CURRENCY, frozenEstimate);
+                BigDecimal frozenEstimateUSD = tx.price().multiply(BigDecimal.valueOf(tx.quantity()));
+                BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, accountCurrency);
+                accountServiceClient.unfreezeFunds(tx.userId(), accountCurrency, frozenEstimate);
             }
             transactionServiceClient.updateStatus(tx.exchangeOrderId(), "CANCELED");
             log.info("Canceled order {} userId={}", tx.exchangeOrderId(), tx.userId());
