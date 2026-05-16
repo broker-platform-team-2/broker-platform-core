@@ -19,6 +19,7 @@ public class ExchangeMessageDispatcher {
     private final ObjectMapper objectMapper;
     private final NotificationServiceClient notificationClient;
     private final OrderUpdateProcessor orderUpdateProcessor;
+    private final PendingOrderRegistry pendingOrderRegistry;
 
     // Counters for visibility — log on every Nth message to avoid flooding
     private final AtomicLong priceUpdateCount = new AtomicLong();
@@ -37,7 +38,8 @@ public class ExchangeMessageDispatcher {
                 case "ORDER_UPDATE" -> orderUpdateProcessor.process(payload);
                 case "MARKET_EVENT" -> handleMarketEvent(payload);
                 case "ORDER_BOOK_UPDATE" -> handleOrderBookUpdate(payload);
-                case "ORDER_ACK", "ORDER_REJECTED" -> log.info("Order {}: {}", type, payload);
+                case "ORDER_ACK"      -> handleOrderAck(payload);
+                case "ORDER_REJECTED" -> handleOrderRejected(payload);
                 default -> log.warn("Unknown exchange message type='{}' raw={}", type, rawMessage);
             }
         } catch (Exception e) {
@@ -64,9 +66,7 @@ public class ExchangeMessageDispatcher {
 
     private void handleMarketEvent(JsonNode payload) {
         long n = marketEventCount.incrementAndGet();
-        log.info("MARKET_EVENT #{} type={} headline={}", n,
-                payload.path("event_type").asText(),
-                payload.path("headline").asText());
+        log.info("MARKET_EVENT #{} full payload={}", n, payload);
         try {
             notificationClient.broadcast(new NotificationMessage(
                     "MARKET_EVENT",
@@ -82,5 +82,19 @@ public class ExchangeMessageDispatcher {
                 "ORDER_BOOK_UPDATE",
                 objectMapper.convertValue(payload, Map.class)
         ));
+    }
+
+    private void handleOrderAck(JsonNode payload) {
+        String orderId = payload.path("order_id").asText();
+        log.info("ORDER_ACK received for order_id={}", orderId);
+        pendingOrderRegistry.ack(orderId);
+    }
+
+    private void handleOrderRejected(JsonNode payload) {
+        String orderId = payload.path("order_id").asText();
+        String code    = payload.path("code").asText("ORDER_REJECTED");
+        String message = payload.path("message").asText("Order was rejected by the exchange");
+        log.warn("ORDER_REJECTED for order_id={} code={} message={}", orderId, code, message);
+        pendingOrderRegistry.reject(orderId, code, message);
     }
 }
