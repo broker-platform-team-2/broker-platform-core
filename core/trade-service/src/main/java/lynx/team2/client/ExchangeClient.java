@@ -9,7 +9,6 @@ import lynx.team2.dto.PlaceOrderRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -18,16 +17,17 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
 public class ExchangeClient {
 
-    private static final String ORDERS_TOPIC = "orders.requests";
+    /** REST client for the exchange REST API (market data, order lookup, cancel) */
+    private final RestClient exchangeRestClient;
 
-    private final RestClient client;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    /** REST client for exchange-client-service (order placement via WebSocket) */
+    private final RestClient exchangeClientRestClient;
+
     private final ObjectMapper objectMapper;
     private final String apiKey;
     private final String apiSecret;
@@ -35,14 +35,15 @@ public class ExchangeClient {
 
     private volatile String platformId = "unknown";
 
-    public ExchangeClient(@Qualifier("exchangeRestClient") RestClient client,
-                          KafkaTemplate<String, String> kafkaTemplate,
-                          ObjectMapper objectMapper,
-                          @Value("${exchange.api-key}") String apiKey,
-                          @Value("${exchange.api-secret}") String apiSecret,
-                          @Value("${exchange.base-url}") String exchangeBaseUrl) {
-        this.client = client;
-        this.kafkaTemplate = kafkaTemplate;
+    public ExchangeClient(
+            @Qualifier("exchangeRestClient") RestClient exchangeRestClient,
+            @Qualifier("exchangeClientRestClient") RestClient exchangeClientRestClient,
+            ObjectMapper objectMapper,
+            @Value("${exchange.api-key}") String apiKey,
+            @Value("${exchange.api-secret}") String apiSecret,
+            @Value("${exchange.base-url}") String exchangeBaseUrl) {
+        this.exchangeRestClient = exchangeRestClient;
+        this.exchangeClientRestClient = exchangeClientRestClient;
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
         this.apiSecret = apiSecret;
@@ -51,13 +52,12 @@ public class ExchangeClient {
 
     @PostConstruct
     public void resolvePlatformId() {
-        // Retry a few times with backoff — the exchange may not be ready yet at startup
         for (int attempt = 1; attempt <= 5; attempt++) {
             try {
                 String requestBody = objectMapper.writeValueAsString(
                         Map.of("api_key", apiKey, "api_secret", apiSecret));
                 String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
-                String response = client.post()
+                String response = exchangeRestClient.post()
                         .uri(verifyUrl)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(requestBody)
@@ -89,7 +89,7 @@ public class ExchangeClient {
             String requestBody = objectMapper.writeValueAsString(
                     Map.of("api_key", apiKey, "api_secret", apiSecret));
             String verifyUrl = exchangeBaseUrl + "/internal/platforms/verify";
-            String response = client.post()
+            String response = exchangeRestClient.post()
                     .uri(verifyUrl)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestBody)
@@ -110,32 +110,37 @@ public class ExchangeClient {
         return "unknown";
     }
 
+    /**
+     * Places an order by forwarding it to exchange-client-service,
+     * which sends a PLACE_ORDER message over the live exchange WebSocket
+     * and waits for ORDER_ACK / ORDER_REJECTED before returning.
+     */
     public ExchangeOrder placeOrder(Long platformUserId, PlaceOrderRequest request) {
         String orderId = UUID.randomUUID().toString();
-        // If startup resolution failed, try once more before sending the order
         String resolvedPlatformId = "unknown".equals(platformId) ? tryResolvePlatformId() : platformId;
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("order_id", orderId);
-        payload.put("platform_id", resolvedPlatformId);
-        payload.put("platform_user_id", String.valueOf(platformUserId));
-        payload.put("instrument_type", request.instrumentType().name());
-        payload.put("instrument_id", request.instrumentId());
-        payload.put("order_type", request.orderType().name());
-        payload.put("side", request.side().name());
-        payload.put("quantity", request.quantity());
-        if (request.limitPrice() != null) payload.put("limit_price", request.limitPrice());
-        if (request.expiresAt() != null)  payload.put("expires_at", request.expiresAt().toString());
+        payload.put("orderId",         orderId);
+        payload.put("platformUserId",  String.valueOf(platformUserId));
+        payload.put("instrumentType",  request.instrumentType().name());
+        payload.put("instrumentId",    request.instrumentId());
+        payload.put("orderType",       request.orderType().name());
+        payload.put("side",            request.side().name());
+        payload.put("quantity",        request.quantity());
+        if (request.limitPrice() != null) payload.put("limitPrice", request.limitPrice());
+        if (request.expiresAt()  != null) payload.put("expiresAt",  request.expiresAt().toString());
 
         try {
-            String json = objectMapper.writeValueAsString(payload);
-            kafkaTemplate.send(ORDERS_TOPIC, orderId, json).get(10, TimeUnit.SECONDS);
+            exchangeClientRestClient.post()
+                    .uri("/internal/orders")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .toBodilessEntity();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to publish order to exchange: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to place order via exchange WebSocket: " + e.getMessage(), e);
         }
 
-        // Return a synthetic acknowledgment — the order is processed asynchronously
-        // by the order-book-engine. Fills arrive later via the exchange-client-service.
         return new ExchangeOrder(
                 orderId, resolvedPlatformId, String.valueOf(platformUserId),
                 request.instrumentType().name(), request.instrumentId(),
@@ -147,26 +152,25 @@ public class ExchangeClient {
     }
 
     public ExchangeOrder getOrder(String orderId) {
-        return client.get()
+        return exchangeRestClient.get()
                 .uri("/orders/{id}", orderId)
                 .retrieve()
                 .body(ExchangeOrder.class);
     }
 
     public void cancelOrder(String orderId) {
-        client.delete()
+        exchangeRestClient.delete()
                 .uri("/orders/{id}", orderId)
                 .retrieve()
                 .toBodilessEntity();
     }
 
     public StockSnapshot getStock(String ticker) {
-        return client.get()
+        return exchangeRestClient.get()
                 .uri("/market/stocks/{ticker}", ticker)
                 .retrieve()
                 .body(StockSnapshot.class);
     }
-
 
     public record ExchangeOrderRequest(
             @JsonProperty("platform_user_id") String platformUserId,

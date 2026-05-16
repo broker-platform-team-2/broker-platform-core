@@ -35,4 +35,16 @@ public class RestClientConfig {
                 .defaultHeader("API-SECRET", apiSecret)
                 .build();
     }
+
+    /** Calls exchange-client-service to place orders via its live WebSocket connection */
+    @Bean("exchangeClientRestClient")
+    public RestClient exchangeClientRestClient(
+            @Value("${services.exchange-client.url}") String baseUrl,
+            @Value("${internal.token}") String internalToken
+    ) {
+        return RestClient.builder()
+                .baseUrl(baseUrl)
+                .defaultHeader("X-Internal-Token", internalToken)
+                .build();
+    }
 }
