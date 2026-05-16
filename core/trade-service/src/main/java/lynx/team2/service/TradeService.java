@@ -54,13 +54,16 @@ public class TradeService {
             throw e;
         }
 
+        BigDecimal resolvedPrice = resolvePrice(request, exchangeOrder);
+        BigDecimal platformFee = calculateFee(resolvedPrice, request.quantity(), currency);
+
         TransactionResponse tx = transactionServiceClient.createTransaction(new CreateTransactionRequest(
                 userId,
                 exchangeOrder.orderId(),
                 request.side(),
                 TransactionStatus.PENDING,
-                BigDecimal.ZERO,
-                resolvePrice(request, exchangeOrder),
+                platformFee,
+                resolvedPrice,
                 currency,
                 request.quantity(),
                 request.instrumentId(),
@@ -121,13 +124,19 @@ public class TradeService {
 
     private BigDecimal estimateCost(PlaceOrderRequest request) {
         BigDecimal qty = BigDecimal.valueOf(request.quantity());
+        boolean isOption = request.instrumentType() == lynx.team2.models.InstrumentType.OPTION;
         return switch (request.orderType()) {
             case LIMIT -> request.limitPrice().multiply(qty);
             case MARKET -> {
                 try {
-                    ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
-                    BigDecimal buffer = BigDecimal.valueOf(1.05);
-                    yield stock.currentPrice().multiply(qty).multiply(buffer);
+                    BigDecimal unitPrice;
+                    if (isOption) {
+                        unitPrice = exchangeClient.getOptionPremium(request.instrumentId());
+                    } else {
+                        unitPrice = exchangeClient.getStock(request.instrumentId()).currentPrice();
+                    }
+                    if (unitPrice == null) yield null;
+                    yield unitPrice.multiply(qty).multiply(BigDecimal.valueOf(1.05));
                 } catch (RuntimeException e) {
                     log.warn("Could not fetch market price for {}; skipping freeze", request.instrumentId(), e);
                     yield null;
@@ -146,14 +155,33 @@ public class TradeService {
         }
         // Market order not yet filled — use current market price as placeholder
         try {
-            ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
-            if (stock.currentPrice() != null && stock.currentPrice().compareTo(BigDecimal.ZERO) > 0) {
-                return stock.currentPrice();
+            boolean isOption = request.instrumentType() == lynx.team2.models.InstrumentType.OPTION;
+            BigDecimal unitPrice = isOption
+                    ? exchangeClient.getOptionPremium(request.instrumentId())
+                    : exchangeClient.getStock(request.instrumentId()).currentPrice();
+            if (unitPrice != null && unitPrice.compareTo(BigDecimal.ZERO) > 0) {
+                return unitPrice;
             }
         } catch (RuntimeException e) {
             log.warn("Could not fetch market price for {} to resolve transaction price", request.instrumentId(), e);
         }
-        return BigDecimal.ONE; // last-resort non-zero placeholder
+        return BigDecimal.ONE;
+    }
+
+    /**
+     * Platform fee: 0.08% of order value, minimum $1.00 equivalent.
+     * Stored in the account currency so the Orders page can display it directly.
+     */
+    private BigDecimal calculateFee(BigDecimal priceUSD, Integer quantity, String currency) {
+        if (priceUSD == null || quantity == null || quantity <= 0) {
+            return BigDecimal.valueOf(1.00);
+        }
+        BigDecimal orderValueUSD = priceUSD.multiply(BigDecimal.valueOf(quantity));
+        BigDecimal feeUSD = orderValueUSD.multiply(BigDecimal.valueOf(0.0008));
+        BigDecimal minFeeUSD = BigDecimal.valueOf(1.00);
+        BigDecimal feeInUSD = feeUSD.compareTo(minFeeUSD) < 0 ? minFeeUSD : feeUSD;
+        return CurrencyConverter.fromUSD(feeInUSD, currency)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private void safeUnfreeze(Long userId, String currency, BigDecimal amount) {

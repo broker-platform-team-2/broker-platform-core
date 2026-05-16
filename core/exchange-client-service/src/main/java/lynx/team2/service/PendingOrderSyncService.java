@@ -81,6 +81,23 @@ public class PendingOrderSyncService {
         }
 
         String exchangeStatus = orderNode.path("status").asText("").toUpperCase();
+
+        // Options are not auto-filled by the exchange matching engine.
+        // Auto-settle any PENDING OPTION order at the premium recorded at placement time.
+        if ((exchangeStatus.isBlank() || exchangeStatus.equals("PENDING"))
+                && "OPTION".equalsIgnoreCase(tx.instrumentType())) {
+            log.info("Pending order sync: auto-settling OPTION MARKET order {} at recorded price",
+                    tx.exchangeOrderId());
+            ObjectNode syntheticPayload = objectMapper.createObjectNode();
+            syntheticPayload.put("order_id", tx.exchangeOrderId());
+            syntheticPayload.put("status", "FILLED");
+            syntheticPayload.put("filled_quantity", tx.quantity() != null ? tx.quantity() : 0);
+            syntheticPayload.put("average_fill_price",
+                    tx.price() != null ? tx.price().toPlainString() : "0");
+            orderUpdateProcessor.process(syntheticPayload);
+            return;
+        }
+
         if (exchangeStatus.isBlank() || exchangeStatus.equals("PENDING")) return;
 
         log.info("Pending order sync: order {} has exchange status {} — triggering settlement",

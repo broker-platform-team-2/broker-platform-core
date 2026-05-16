@@ -14,7 +14,9 @@ import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -172,6 +174,27 @@ public class ExchangeClient {
                 .body(StockSnapshot.class);
     }
 
+    /** Returns all active option contracts from the exchange. */
+    public List<OptionSnapshot> getOptions() {
+        OptionSnapshot[] arr = exchangeRestClient.get()
+                .uri("/market/options")
+                .retrieve()
+                .body(OptionSnapshot[].class);
+        return arr != null ? Arrays.asList(arr) : List.of();
+    }
+
+    /**
+     * Returns the current premium for a specific option by scanning the list.
+     * (The exchange's single-option endpoint is not yet implemented.)
+     */
+    public BigDecimal getOptionPremium(String optionId) {
+        return getOptions().stream()
+                .filter(o -> optionId.equals(o.optionId()))
+                .map(OptionSnapshot::premium)
+                .findFirst()
+                .orElse(null);
+    }
+
     public record ExchangeOrderRequest(
             @JsonProperty("platform_user_id") String platformUserId,
             @JsonProperty("instrument_type") String instrumentType,
@@ -206,5 +229,16 @@ public class ExchangeClient {
             String ticker,
             String name,
             @JsonProperty("current_price") BigDecimal currentPrice
+    ) {}
+
+    public record OptionSnapshot(
+            @JsonProperty("option_id")          String optionId,
+            @JsonProperty("underlying_ticker")  String underlyingTicker,
+            @JsonProperty("option_type")        String optionType,   // "CALL" or "PUT"
+            @JsonProperty("strike_price")       BigDecimal strikePrice,
+            @JsonProperty("expiry_time")        String expiryTime,
+            @JsonProperty("premium")            BigDecimal premium,
+            @JsonProperty("is_active")          boolean active,
+            @JsonProperty("auto_exercise")      boolean autoExercise
     ) {}
 }
