@@ -92,6 +92,23 @@ public class OrderUpdateProcessor {
         try {
             if (isBuy) {
                 accountServiceClient.deductFrozenFunds(tx.userId(), accountCurrency, settledAmount);
+
+                // Release any excess frozen funds (buffer from MARKET order freeze at price * 1.05)
+                if (tx.price() != null && tx.quantity() != null) {
+                    BigDecimal frozenEstimateUSD = tx.price().multiply(BigDecimal.valueOf(tx.quantity()));
+                    BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, accountCurrency);
+                    BigDecimal excess = frozenEstimate.subtract(settledAmount);
+                    if (excess.compareTo(BigDecimal.ZERO) > 0) {
+                        try {
+                            accountServiceClient.unfreezeFunds(tx.userId(), accountCurrency, excess);
+                            log.info("Released excess frozen funds={} {} for order={}",
+                                    excess, accountCurrency, tx.exchangeOrderId());
+                        } catch (Exception ex) {
+                            log.warn("Could not release excess frozen funds for order={}: {}",
+                                    tx.exchangeOrderId(), ex.getMessage());
+                        }
+                    }
+                }
             } else {
                 accountServiceClient.depositFunds(tx.userId(), accountCurrency, settledAmount);
             }

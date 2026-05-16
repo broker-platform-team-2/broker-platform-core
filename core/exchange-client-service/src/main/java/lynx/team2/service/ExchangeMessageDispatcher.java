@@ -66,9 +66,7 @@ public class ExchangeMessageDispatcher {
 
     private void handleMarketEvent(JsonNode payload) {
         long n = marketEventCount.incrementAndGet();
-        log.info("MARKET_EVENT #{} type={} headline={}", n,
-                payload.path("event_type").asText(),
-                payload.path("headline").asText());
+        log.info("MARKET_EVENT #{} full payload={}", n, payload);
         try {
             notificationClient.broadcast(new NotificationMessage(
                     "MARKET_EVENT",
