@@ -94,6 +94,28 @@ public class TransactionController {
         return toResponse(t);
     }
 
+    @GetMapping("/{id}/internal")
+    public TransactionResponse getById(
+            @RequestHeader("X-Internal-Token") String token,
+            @PathVariable Long id) {
+        verifyToken(token);
+        Transaction t = transactionService.findById(id)
+                .orElseThrow(() -> new RepoException("Transaction not found: " + id));
+        return toResponse(t);
+    }
+
+    @PatchMapping("/{id}/status")
+    public TransactionResponse updateStatusById(
+            @RequestHeader("X-Internal-Token") String token,
+            @PathVariable Long id,
+            @RequestParam TransactionStatus status) {
+        verifyToken(token);
+        Transaction t = transactionService.findById(id)
+                .orElseThrow(() -> new RepoException("Transaction not found: " + id));
+        t.setStatus(status);
+        return toResponse(transactionService.save(t));
+    }
+
     @PatchMapping("/exchange-order/{exchangeOrderId}/status")
     public TransactionResponse updateStatus(
             @RequestHeader("X-Internal-Token") String token,

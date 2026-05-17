@@ -61,4 +61,9 @@ public class TransactionService {
         return repo.save(t);
     }
 
+    @Transactional
+    public Transaction save(Transaction transaction) {
+        return repo.save(transaction);
+    }
+
 }

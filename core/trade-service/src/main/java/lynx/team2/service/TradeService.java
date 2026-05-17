@@ -93,11 +93,115 @@ public class TradeService {
     }
 
     public void cancelOrder(Long userId, String orderId) {
-        ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
-        if (!String.valueOf(userId).equals(order.platformUserId())) {
+        // 1. Try to verify ownership and cancel on the exchange.
+        //    Old orders may have been dropped by the exchange (404) — handle gracefully.
+        boolean exchangeKnowsOrder = false;
+        try {
+            ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
+            if (!String.valueOf(userId).equals(order.platformUserId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+            }
+            exchangeKnowsOrder = true;
+        } catch (ResponseStatusException e) {
+            throw e; // re-throw Forbidden
+        } catch (Exception e) {
+            log.warn("Could not fetch order {} from exchange (may be expired/dropped): {}", orderId, e.getMessage());
+        }
+
+        if (exchangeKnowsOrder) {
+            try {
+                exchangeClient.cancelOrder(orderId);
+                // Exchange will send ORDER_UPDATE CANCELED via WebSocket which handles unfreeze.
+                return;
+            } catch (Exception e) {
+                log.warn("Exchange cancel failed for order {}: {}", orderId, e.getMessage());
+            }
+        }
+
+        // 2. Exchange doesn't know the order — do local cleanup directly.
+        TransactionServiceClient.TransactionDto tx = transactionServiceClient.findByExchangeOrderId(orderId);
+        if (tx == null) {
+            log.warn("No local transaction found for orderId={}", orderId);
+            return;
+        }
+        if (!"PENDING".equalsIgnoreCase(tx.status()) && !"PARTIALLY_FILLED".equalsIgnoreCase(tx.status())) {
+            log.info("Order {} already in terminal status {}, skipping local cancel", orderId, tx.status());
+            return;
+        }
+
+        // Unfreeze the full frozen estimate (price * qty * 1.05 to cover MARKET order buffer).
+        if ("BUY".equalsIgnoreCase(tx.type()) && tx.price() != null && tx.quantity() != null) {
+            try {
+                String currency = tx.currency() != null && !tx.currency().isBlank() ? tx.currency() : "USD";
+                BigDecimal frozenEstimateUSD = tx.price()
+                        .multiply(BigDecimal.valueOf(tx.quantity()))
+                        .multiply(BigDecimal.valueOf(1.05));
+                BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, currency);
+                accountServiceClient.unfreezeFunds(userId, currency, frozenEstimate);
+                log.info("Locally unfroze {} {} for dropped order {}", frozenEstimate, currency, orderId);
+            } catch (Exception e) {
+                log.error("Failed to unfreeze funds for order {}: {}", orderId, e.getMessage());
+            }
+        }
+
+        // Mark as cancelled in the transaction service.
+        try {
+            transactionServiceClient.updateStatus(orderId, "CANCELED");
+            log.info("Locally cancelled order {} for userId={}", orderId, userId);
+        } catch (Exception e) {
+            log.error("Failed to update status to CANCELED for order {}: {}", orderId, e.getMessage());
+        }
+    }
+
+    public void cancelOrderByTransactionId(Long userId, Long transactionId) {
+        TransactionServiceClient.TransactionDto tx = transactionServiceClient.findById(transactionId);
+        if (tx == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found: " + transactionId);
+        }
+        if (!userId.equals(tx.userId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
         }
-        exchangeClient.cancelOrder(orderId);
+        if (!"PENDING".equalsIgnoreCase(tx.status()) && !"PARTIALLY_FILLED".equalsIgnoreCase(tx.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Order is not in a cancellable state: " + tx.status());
+        }
+
+        // If the exchange still knows this order, try to cancel there first
+        if (tx.exchangeOrderId() != null && !tx.exchangeOrderId().isBlank()) {
+            try {
+                ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(tx.exchangeOrderId());
+                if (String.valueOf(userId).equals(order.platformUserId())) {
+                    try {
+                        exchangeClient.cancelOrder(tx.exchangeOrderId());
+                        // Exchange will send ORDER_UPDATE CANCELED via WebSocket which handles unfreeze.
+                        return;
+                    } catch (Exception e) {
+                        log.warn("Exchange cancel failed for order {}: {}", tx.exchangeOrderId(), e.getMessage());
+                    }
+                }
+            } catch (ResponseStatusException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Could not fetch order {} from exchange (may be expired): {}", tx.exchangeOrderId(), e.getMessage());
+            }
+        }
+
+        // Local cleanup: unfreeze funds + mark canceled
+        if ("BUY".equalsIgnoreCase(tx.type()) && tx.price() != null && tx.quantity() != null) {
+            try {
+                String currency = tx.currency() != null && !tx.currency().isBlank() ? tx.currency() : "USD";
+                BigDecimal frozenEstimateUSD = tx.price()
+                        .multiply(BigDecimal.valueOf(tx.quantity()))
+                        .multiply(BigDecimal.valueOf(1.05));
+                BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, currency);
+                accountServiceClient.unfreezeFunds(userId, currency, frozenEstimate);
+                log.info("Locally unfroze {} {} for transaction {}", frozenEstimate, currency, transactionId);
+            } catch (Exception e) {
+                log.error("Failed to unfreeze funds for transaction {}: {}", transactionId, e.getMessage());
+            }
+        }
+
+        transactionServiceClient.updateStatusById(transactionId, "CANCELED");
+        log.info("Locally cancelled transaction {} for userId={}", transactionId, userId);
     }
 
     private void validate(PlaceOrderRequest request) {
