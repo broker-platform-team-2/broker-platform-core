@@ -65,7 +65,7 @@ spring:
             - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
             - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
             - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
-            - AddRequestHeader=ADMIN-TOKEN, ${EXCHANGE_ADMIN_TOKEN}
+            - AddRequestHeader=ADMIN-TOKEN, ${EXCHANGE_ADMIN_TOKEN:test-token}
 
 server:
   port: 8180
