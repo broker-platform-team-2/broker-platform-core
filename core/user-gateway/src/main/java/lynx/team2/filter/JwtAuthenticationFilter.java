@@ -59,6 +59,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
+        // Read-only market-data GETs are accessible without a JWT so the public
+        // landing page can display the live ticker tape before a user logs in.
+        // All other /exchange/** paths (orders, admin, etc.) require a valid JWT.
+        if (HttpMethod.GET.equals(request.getMethod()) && path.startsWith("/exchange/market/")) {
+            return chain.filter(exchange);
+        }
+
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return reject(exchange, "Missing or invalid Authorization header");
@@ -89,7 +96,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private boolean isPublic(String path) {
         return PUBLIC_PATHS.stream().anyMatch(path::equals)
-                || path.startsWith("/exchange/")
                 || path.equals("/notifications/ws");
     }
 
