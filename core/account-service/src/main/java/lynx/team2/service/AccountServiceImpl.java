@@ -65,6 +65,9 @@ public class AccountServiceImpl implements AccountService {
             throw new ValidatorException("Deposit amount must be positive");
         }
 
+        // Auto-create the account if it doesn't exist yet (e.g. bot users whose
+        // accounts were not created during registration due to a connectivity issue).
+        createAccount(userId, currency);
         Account account = lockAccount(userId, currency);
         account.setBalance(account.getBalance().add(amount));
         Account saved = accountRepository.save(account);

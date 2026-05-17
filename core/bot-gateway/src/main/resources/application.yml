@@ -7,19 +7,53 @@ spring:
         - id: user-service
           uri: ${USER_SERVICE_URL:http://localhost:8182}
           predicates:
-            - Path=/users/**,/bots/**
+            - Path=/users/**
+        - id: bots-service
+          uri: ${USER_SERVICE_URL:http://localhost:8182}
+          predicates:
+            - Path=/bots/**
         - id: account-service
           uri: ${ACCOUNT_SERVICE_URL:http://localhost:8183}
           predicates:
-            - Path=/accounts/**,/funds/**
+            - Path=/accounts/**
+        - id: funds-service
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8183}
+          predicates:
+            - Path=/funds/**
         - id: transaction-service
           uri: ${TRANSACTION_SERVICE_URL:http://localhost:8184}
           predicates:
-            - Path=/transactions/**,/orders/**
+            - Path=/transactions/**
+        - id: trade-service
+          uri: ${TRADE_SERVICE_URL:http://localhost:8186}
+          predicates:
+            - Path=/orders/**
+        - id: options-service
+          uri: ${TRADE_SERVICE_URL:http://localhost:8186}
+          predicates:
+            - Path=/options/**
         - id: holdings-service
           uri: ${HOLDINGS_SERVICE_URL:http://localhost:8185}
           predicates:
-            - Path=/holdings/**,/portfolio/**
+            - Path=/holdings/**
+        - id: portfolio-service
+          uri: ${HOLDINGS_SERVICE_URL:http://localhost:8185}
+          predicates:
+            - Path=/portfolio/**
+        - id: notification-ws
+          uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:8188
+          predicates:
+            - Path=/notifications/ws
+          filters:
+            - RewritePath=/notifications/ws, /ws
+        - id: exchange-proxy
+          uri: ${EXCHANGE_URL:http://localhost:8085}
+          predicates:
+            - Path=/exchange/**
+          filters:
+            - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
+            - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
+            - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
 
 server:
   port: 8190

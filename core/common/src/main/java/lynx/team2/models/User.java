@@ -44,4 +44,10 @@ public class User{
 
     private LocalDateTime passwordResetTokenExpiresAt;
 
+    @Column(name = "bot_subscribed_until")
+    private LocalDateTime botSubscribedUntil;
+
+    @Column(name = "bot_running", nullable = false, columnDefinition = "boolean default false")
+    private boolean botRunning = false;
+
 }

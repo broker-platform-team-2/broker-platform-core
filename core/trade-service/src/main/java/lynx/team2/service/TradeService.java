@@ -4,12 +4,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lynx.team2.client.AccountServiceClient;
 import lynx.team2.client.ExchangeClient;
+import lynx.team2.client.HoldingsServiceClient;
 import lynx.team2.client.TransactionServiceClient;
 import lynx.team2.dto.CreateTransactionRequest;
+import lynx.team2.dto.HoldingResponse;
 import lynx.team2.dto.OrderResponse;
 import lynx.team2.dto.PlaceOrderRequest;
 import lynx.team2.dto.TransactionResponse;
 import lynx.team2.exceptions.ValidatorException;
+import lynx.team2.models.InstrumentType;
 import lynx.team2.models.OrderType;
 import lynx.team2.models.TransactionStatus;
 import lynx.team2.models.TransactionType;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -28,9 +32,11 @@ public class TradeService {
     private final AccountServiceClient accountServiceClient;
     private final TransactionServiceClient transactionServiceClient;
     private final ExchangeClient exchangeClient;
+    private final HoldingsServiceClient holdingsServiceClient;
 
     public OrderResponse placeOrder(Long userId, PlaceOrderRequest request) {
         validate(request);
+        validatePutOwnership(userId, request);
 
         String currency = (request.currency() != null && !request.currency().isBlank())
                 ? request.currency() : "USD";
@@ -202,6 +208,27 @@ public class TradeService {
 
         transactionServiceClient.updateStatusById(transactionId, "CANCELED");
         log.info("Locally cancelled transaction {} for userId={}", transactionId, userId);
+    }
+
+    private void validatePutOwnership(Long userId, PlaceOrderRequest request) {
+        if (request.instrumentType() != InstrumentType.OPTION || request.side() != TransactionType.BUY) return;
+
+        ExchangeClient.OptionSnapshot option = exchangeClient.getOptions().stream()
+                .filter(o -> request.instrumentId().equals(o.optionId()))
+                .findFirst()
+                .orElse(null);
+
+        if (option == null || !"PUT".equals(option.optionType())) return;
+
+        List<HoldingResponse> holdings = holdingsServiceClient.getHoldingsForInstrument(userId, option.underlyingTicker());
+        boolean ownsStock = holdings.stream()
+                .anyMatch(h -> h.instrumentType() == InstrumentType.STOCK
+                        && option.underlyingTicker().equals(h.instrumentId())
+                        && h.amount() != null && h.amount().compareTo(BigDecimal.ZERO) > 0);
+
+        if (!ownsStock) {
+            throw new ValidatorException("You must own " + option.underlyingTicker() + " shares to buy a PUT option on it.");
+        }
     }
 
     private void validate(PlaceOrderRequest request) {
