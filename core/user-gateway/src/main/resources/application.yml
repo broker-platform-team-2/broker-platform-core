@@ -46,6 +46,17 @@ spring:
             - Path=/notifications/ws
           filters:
             - RewritePath=/notifications/ws, /ws
+        # Public read-only market data — no ADMIN-TOKEN, no JWT required (landing page).
+        - id: exchange-market-public
+          uri: ${EXCHANGE_URL:http://localhost:8085}
+          predicates:
+            - Path=/exchange/market/**
+            - Method=GET
+          filters:
+            - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
+            - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
+            - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
+        # All other exchange calls — require JWT (enforced by JwtAuthenticationFilter).
         - id: exchange-proxy
           uri: ${EXCHANGE_URL:http://localhost:8085}
           predicates:
@@ -54,7 +65,7 @@ spring:
             - RewritePath=/exchange/(?<rest>.*), /api/v1/${rest}
             - AddRequestHeader=API-KEY, ${EXCHANGE_API_KEY}
             - AddRequestHeader=API-SECRET, ${EXCHANGE_API_SECRET}
-            - AddRequestHeader=ADMIN-TOKEN, ${EXCHANGE_ADMIN_TOKEN:test-token}
+            - AddRequestHeader=ADMIN-TOKEN, ${EXCHANGE_ADMIN_TOKEN}
 
 server:
   port: 8180
