@@ -37,9 +37,12 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       SMTP_USERNAME: ${SMTP_USERNAME}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SERVICES_ACCOUNT_URL: http://account-service:8183
     depends_on:
       db:
         condition: service_healthy
+      account-service:
+        condition: service_started
     networks: [internal]
 
   account-service:
@@ -215,13 +218,38 @@ services:
       ACCOUNT_SERVICE_URL: http://account-service:8183
       TRANSACTION_SERVICE_URL: http://transaction-service:8184
       HOLDINGS_SERVICE_URL: http://holdings-service:8185
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      TRADE_SERVICE_URL: http://trade-service:8186
+      NOTIFICATION_SERVICE_HOST: notification-service
+      EXCHANGE_URL: ${EXCHANGE_URL}
+      EXCHANGE_API_KEY: ${EXCHANGE_API_KEY}
+      EXCHANGE_API_SECRET: ${EXCHANGE_API_SECRET}
     depends_on:
       - user-service
       - account-service
       - transaction-service
       - holdings-service
+      - trade-service
+      - notification-service
     networks: [internal, public]
+
+  trading-bot:
+    build:
+      context: ../../broker-platform-bot-gateway-spec
+      dockerfile: Dockerfile
+    container_name: trading_bot
+    restart: unless-stopped
+    environment:
+      GATEWAY_HTTP_URL: http://bot-gateway:8190
+      GATEWAY_WS_URL: ws://bot-gateway:8190/notifications/ws
+      BOT_EMAIL: ${BOT_EMAIL}
+      BOT_PASSWORD: ${BOT_PASSWORD}
+      BOT_USERNAME: ${BOT_USERNAME:-team2-bot}
+      SEED_DEPOSIT: ${SEED_DEPOSIT:-100000}
+      SEED_CURRENCY: ${SEED_CURRENCY:-USD}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      - bot-gateway
+    networks: [internal]
 
 volumes:
   pgdata:

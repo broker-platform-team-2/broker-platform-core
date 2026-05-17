@@ -38,4 +38,12 @@ public class TradeController {
             @PathVariable String orderId) {
         tradeService.cancelOrder(userId, orderId);
     }
+
+    @DeleteMapping("/cancel-by-tx/{transactionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancelOrderByTransactionId(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long transactionId) {
+        tradeService.cancelOrderByTransactionId(userId, transactionId);
+    }
 }

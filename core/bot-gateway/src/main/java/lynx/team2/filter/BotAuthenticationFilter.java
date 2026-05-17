@@ -37,7 +37,8 @@ public class BotAuthenticationFilter implements GlobalFilter, Ordered {
             "/bots/register",
             "/bots/login",
             "/users/register",
-            "/users/login"
+            "/users/login",
+            "/notifications/ws"
     );
 
     private final SecretKey key;
@@ -55,12 +56,18 @@ public class BotAuthenticationFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
+        String token = null;
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring("Bearer ".length()).trim();
+        } else {
+            // WebSocket clients pass the JWT as ?token=<jwt> since WS upgrade
+            // requests cannot set Authorization headers in most runtimes.
+            token = request.getQueryParams().getFirst("token");
+        }
+        if (token == null || token.isBlank()) {
             return reject(exchange, "Missing or invalid Authorization header");
         }
-
-        String token = authHeader.substring("Bearer ".length()).trim();
         try {
             Claims claims = Jwts.parser()
                     .verifyWith(key)
@@ -69,9 +76,24 @@ public class BotAuthenticationFilter implements GlobalFilter, Ordered {
                     .getPayload();
 
             String botId = claims.get("userId", String.class);
+            String safeId = botId == null ? "" : botId;
+
+            // Allow the bot to act on behalf of a subscriber by setting X-On-Behalf-Of.
+            // The gateway strips the header after resolving so downstream services never see it.
+            String onBehalfOf = request.getHeaders().getFirst("X-On-Behalf-Of");
+            String effectiveUserId = (onBehalfOf != null && !onBehalfOf.isBlank()) ? onBehalfOf : safeId;
+
             ServerHttpRequest mutated = request.mutate()
-                    .headers(h -> h.remove("X-Bot-Id"))
-                    .header("X-Bot-Id", botId == null ? "" : botId)
+                    .headers(h -> {
+                        h.remove("X-Bot-Id");
+                        h.remove("X-User-Id");
+                        h.remove("X-Username");
+                        h.remove("X-On-Behalf-Of");
+                    })
+                    .header("X-Bot-Id", safeId)
+                    .header("X-User-Id", effectiveUserId)
+                    .header("X-Username", claims.get("username", String.class) != null
+                            ? claims.get("username", String.class) : "")
                     .build();
 
             return chain.filter(exchange.mutate().request(mutated).build());

@@ -95,7 +95,13 @@ public class OrderUpdateProcessor {
 
                 // Release any excess frozen funds (buffer from MARKET order freeze at price * 1.05)
                 if (tx.price() != null && tx.quantity() != null) {
-                    BigDecimal frozenEstimateUSD = tx.price().multiply(BigDecimal.valueOf(tx.quantity()));
+                    // The freeze in TradeService used price * qty * 1.05 (5 % market-order buffer).
+                    // We must mirror that multiplier here so the full buffer is released.
+                    // unfreezeFunds() clamps to min(amount, frozenBalance), so this is safe
+                    // for LIMIT orders (which froze without the buffer) — it just no-ops.
+                    BigDecimal frozenEstimateUSD = tx.price()
+                            .multiply(BigDecimal.valueOf(tx.quantity()))
+                            .multiply(BigDecimal.valueOf(1.05));
                     BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, accountCurrency);
                     BigDecimal excess = frozenEstimate.subtract(settledAmount);
                     if (excess.compareTo(BigDecimal.ZERO) > 0) {
@@ -162,7 +168,12 @@ public class OrderUpdateProcessor {
         String accountCurrency = (tx.currency() != null && !tx.currency().isBlank()) ? tx.currency() : "USD";
         try {
             if (isBuy && tx.price() != null && tx.quantity() != null) {
-                BigDecimal frozenEstimateUSD = tx.price().multiply(BigDecimal.valueOf(tx.quantity()));
+                // Mirror the 1.05 buffer that TradeService froze for MARKET orders.
+                // unfreezeFunds clamps to min(amount, frozenBalance) so this is safe
+                // for LIMIT orders (which froze without the buffer).
+                BigDecimal frozenEstimateUSD = tx.price()
+                        .multiply(BigDecimal.valueOf(tx.quantity()))
+                        .multiply(BigDecimal.valueOf(1.05));
                 BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, accountCurrency);
                 accountServiceClient.unfreezeFunds(tx.userId(), accountCurrency, frozenEstimate);
             }

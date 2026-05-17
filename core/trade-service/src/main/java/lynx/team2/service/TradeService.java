@@ -4,12 +4,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lynx.team2.client.AccountServiceClient;
 import lynx.team2.client.ExchangeClient;
+import lynx.team2.client.HoldingsServiceClient;
 import lynx.team2.client.TransactionServiceClient;
 import lynx.team2.dto.CreateTransactionRequest;
+import lynx.team2.dto.HoldingResponse;
 import lynx.team2.dto.OrderResponse;
 import lynx.team2.dto.PlaceOrderRequest;
 import lynx.team2.dto.TransactionResponse;
 import lynx.team2.exceptions.ValidatorException;
+import lynx.team2.models.InstrumentType;
 import lynx.team2.models.OrderType;
 import lynx.team2.models.TransactionStatus;
 import lynx.team2.models.TransactionType;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -28,9 +32,11 @@ public class TradeService {
     private final AccountServiceClient accountServiceClient;
     private final TransactionServiceClient transactionServiceClient;
     private final ExchangeClient exchangeClient;
+    private final HoldingsServiceClient holdingsServiceClient;
 
     public OrderResponse placeOrder(Long userId, PlaceOrderRequest request) {
         validate(request);
+        validatePutOwnership(userId, request);
 
         String currency = (request.currency() != null && !request.currency().isBlank())
                 ? request.currency() : "USD";
@@ -54,13 +60,16 @@ public class TradeService {
             throw e;
         }
 
+        BigDecimal resolvedPrice = resolvePrice(request, exchangeOrder);
+        BigDecimal platformFee = calculateFee(resolvedPrice, request.quantity(), currency);
+
         TransactionResponse tx = transactionServiceClient.createTransaction(new CreateTransactionRequest(
                 userId,
                 exchangeOrder.orderId(),
                 request.side(),
                 TransactionStatus.PENDING,
-                BigDecimal.ZERO,
-                resolvePrice(request, exchangeOrder),
+                platformFee,
+                resolvedPrice,
                 currency,
                 request.quantity(),
                 request.instrumentId(),
@@ -90,11 +99,136 @@ public class TradeService {
     }
 
     public void cancelOrder(Long userId, String orderId) {
-        ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
-        if (!String.valueOf(userId).equals(order.platformUserId())) {
+        // 1. Try to verify ownership and cancel on the exchange.
+        //    Old orders may have been dropped by the exchange (404) — handle gracefully.
+        boolean exchangeKnowsOrder = false;
+        try {
+            ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(orderId);
+            if (!String.valueOf(userId).equals(order.platformUserId())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+            }
+            exchangeKnowsOrder = true;
+        } catch (ResponseStatusException e) {
+            throw e; // re-throw Forbidden
+        } catch (Exception e) {
+            log.warn("Could not fetch order {} from exchange (may be expired/dropped): {}", orderId, e.getMessage());
+        }
+
+        if (exchangeKnowsOrder) {
+            try {
+                exchangeClient.cancelOrder(orderId);
+                // Exchange will send ORDER_UPDATE CANCELED via WebSocket which handles unfreeze.
+                return;
+            } catch (Exception e) {
+                log.warn("Exchange cancel failed for order {}: {}", orderId, e.getMessage());
+            }
+        }
+
+        // 2. Exchange doesn't know the order — do local cleanup directly.
+        TransactionServiceClient.TransactionDto tx = transactionServiceClient.findByExchangeOrderId(orderId);
+        if (tx == null) {
+            log.warn("No local transaction found for orderId={}", orderId);
+            return;
+        }
+        if (!"PENDING".equalsIgnoreCase(tx.status()) && !"PARTIALLY_FILLED".equalsIgnoreCase(tx.status())) {
+            log.info("Order {} already in terminal status {}, skipping local cancel", orderId, tx.status());
+            return;
+        }
+
+        // Unfreeze the full frozen estimate (price * qty * 1.05 to cover MARKET order buffer).
+        if ("BUY".equalsIgnoreCase(tx.type()) && tx.price() != null && tx.quantity() != null) {
+            try {
+                String currency = tx.currency() != null && !tx.currency().isBlank() ? tx.currency() : "USD";
+                BigDecimal frozenEstimateUSD = tx.price()
+                        .multiply(BigDecimal.valueOf(tx.quantity()))
+                        .multiply(BigDecimal.valueOf(1.05));
+                BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, currency);
+                accountServiceClient.unfreezeFunds(userId, currency, frozenEstimate);
+                log.info("Locally unfroze {} {} for dropped order {}", frozenEstimate, currency, orderId);
+            } catch (Exception e) {
+                log.error("Failed to unfreeze funds for order {}: {}", orderId, e.getMessage());
+            }
+        }
+
+        // Mark as cancelled in the transaction service.
+        try {
+            transactionServiceClient.updateStatus(orderId, "CANCELED");
+            log.info("Locally cancelled order {} for userId={}", orderId, userId);
+        } catch (Exception e) {
+            log.error("Failed to update status to CANCELED for order {}: {}", orderId, e.getMessage());
+        }
+    }
+
+    public void cancelOrderByTransactionId(Long userId, Long transactionId) {
+        TransactionServiceClient.TransactionDto tx = transactionServiceClient.findById(transactionId);
+        if (tx == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Transaction not found: " + transactionId);
+        }
+        if (!userId.equals(tx.userId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
         }
-        exchangeClient.cancelOrder(orderId);
+        if (!"PENDING".equalsIgnoreCase(tx.status()) && !"PARTIALLY_FILLED".equalsIgnoreCase(tx.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Order is not in a cancellable state: " + tx.status());
+        }
+
+        // If the exchange still knows this order, try to cancel there first
+        if (tx.exchangeOrderId() != null && !tx.exchangeOrderId().isBlank()) {
+            try {
+                ExchangeClient.ExchangeOrder order = exchangeClient.getOrder(tx.exchangeOrderId());
+                if (String.valueOf(userId).equals(order.platformUserId())) {
+                    try {
+                        exchangeClient.cancelOrder(tx.exchangeOrderId());
+                        // Exchange will send ORDER_UPDATE CANCELED via WebSocket which handles unfreeze.
+                        return;
+                    } catch (Exception e) {
+                        log.warn("Exchange cancel failed for order {}: {}", tx.exchangeOrderId(), e.getMessage());
+                    }
+                }
+            } catch (ResponseStatusException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Could not fetch order {} from exchange (may be expired): {}", tx.exchangeOrderId(), e.getMessage());
+            }
+        }
+
+        // Local cleanup: unfreeze funds + mark canceled
+        if ("BUY".equalsIgnoreCase(tx.type()) && tx.price() != null && tx.quantity() != null) {
+            try {
+                String currency = tx.currency() != null && !tx.currency().isBlank() ? tx.currency() : "USD";
+                BigDecimal frozenEstimateUSD = tx.price()
+                        .multiply(BigDecimal.valueOf(tx.quantity()))
+                        .multiply(BigDecimal.valueOf(1.05));
+                BigDecimal frozenEstimate = CurrencyConverter.fromUSD(frozenEstimateUSD, currency);
+                accountServiceClient.unfreezeFunds(userId, currency, frozenEstimate);
+                log.info("Locally unfroze {} {} for transaction {}", frozenEstimate, currency, transactionId);
+            } catch (Exception e) {
+                log.error("Failed to unfreeze funds for transaction {}: {}", transactionId, e.getMessage());
+            }
+        }
+
+        transactionServiceClient.updateStatusById(transactionId, "CANCELED");
+        log.info("Locally cancelled transaction {} for userId={}", transactionId, userId);
+    }
+
+    private void validatePutOwnership(Long userId, PlaceOrderRequest request) {
+        if (request.instrumentType() != InstrumentType.OPTION || request.side() != TransactionType.BUY) return;
+
+        ExchangeClient.OptionSnapshot option = exchangeClient.getOptions().stream()
+                .filter(o -> request.instrumentId().equals(o.optionId()))
+                .findFirst()
+                .orElse(null);
+
+        if (option == null || !"PUT".equals(option.optionType())) return;
+
+        List<HoldingResponse> holdings = holdingsServiceClient.getHoldingsForInstrument(userId, option.underlyingTicker());
+        boolean ownsStock = holdings.stream()
+                .anyMatch(h -> h.instrumentType() == InstrumentType.STOCK
+                        && option.underlyingTicker().equals(h.instrumentId())
+                        && h.amount() != null && h.amount().compareTo(BigDecimal.ZERO) > 0);
+
+        if (!ownsStock) {
+            throw new ValidatorException("You must own " + option.underlyingTicker() + " shares to buy a PUT option on it.");
+        }
     }
 
     private void validate(PlaceOrderRequest request) {
@@ -121,13 +255,19 @@ public class TradeService {
 
     private BigDecimal estimateCost(PlaceOrderRequest request) {
         BigDecimal qty = BigDecimal.valueOf(request.quantity());
+        boolean isOption = request.instrumentType() == lynx.team2.models.InstrumentType.OPTION;
         return switch (request.orderType()) {
             case LIMIT -> request.limitPrice().multiply(qty);
             case MARKET -> {
                 try {
-                    ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
-                    BigDecimal buffer = BigDecimal.valueOf(1.05);
-                    yield stock.currentPrice().multiply(qty).multiply(buffer);
+                    BigDecimal unitPrice;
+                    if (isOption) {
+                        unitPrice = exchangeClient.getOptionPremium(request.instrumentId());
+                    } else {
+                        unitPrice = exchangeClient.getStock(request.instrumentId()).currentPrice();
+                    }
+                    if (unitPrice == null) yield null;
+                    yield unitPrice.multiply(qty).multiply(BigDecimal.valueOf(1.05));
                 } catch (RuntimeException e) {
                     log.warn("Could not fetch market price for {}; skipping freeze", request.instrumentId(), e);
                     yield null;
@@ -146,14 +286,33 @@ public class TradeService {
         }
         // Market order not yet filled — use current market price as placeholder
         try {
-            ExchangeClient.StockSnapshot stock = exchangeClient.getStock(request.instrumentId());
-            if (stock.currentPrice() != null && stock.currentPrice().compareTo(BigDecimal.ZERO) > 0) {
-                return stock.currentPrice();
+            boolean isOption = request.instrumentType() == lynx.team2.models.InstrumentType.OPTION;
+            BigDecimal unitPrice = isOption
+                    ? exchangeClient.getOptionPremium(request.instrumentId())
+                    : exchangeClient.getStock(request.instrumentId()).currentPrice();
+            if (unitPrice != null && unitPrice.compareTo(BigDecimal.ZERO) > 0) {
+                return unitPrice;
             }
         } catch (RuntimeException e) {
             log.warn("Could not fetch market price for {} to resolve transaction price", request.instrumentId(), e);
         }
-        return BigDecimal.ONE; // last-resort non-zero placeholder
+        return BigDecimal.ONE;
+    }
+
+    /**
+     * Platform fee: 0.08% of order value, minimum $1.00 equivalent.
+     * Stored in the account currency so the Orders page can display it directly.
+     */
+    private BigDecimal calculateFee(BigDecimal priceUSD, Integer quantity, String currency) {
+        if (priceUSD == null || quantity == null || quantity <= 0) {
+            return BigDecimal.valueOf(1.00);
+        }
+        BigDecimal orderValueUSD = priceUSD.multiply(BigDecimal.valueOf(quantity));
+        BigDecimal feeUSD = orderValueUSD.multiply(BigDecimal.valueOf(0.0008));
+        BigDecimal minFeeUSD = BigDecimal.valueOf(1.00);
+        BigDecimal feeInUSD = feeUSD.compareTo(minFeeUSD) < 0 ? minFeeUSD : feeUSD;
+        return CurrencyConverter.fromUSD(feeInUSD, currency)
+                .setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private void safeUnfreeze(Long userId, String currency, BigDecimal amount) {
